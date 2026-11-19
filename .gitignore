@@ -1,0 +1,3 @@
+# Local editor/OS files (the per-package .gitignore files cover build output and dependencies)
+.vscode/
+.DS_Store
