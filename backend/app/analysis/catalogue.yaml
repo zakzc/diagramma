@@ -1,0 +1,117 @@
+# External systems & data stores (SPEC §8). Matched by dependency names, docker-compose
+# images (name prefix of the last path segment) and env vars (name prefixes / URL schemes).
+# kind: database | queue | system
+- id: postgres
+  name: PostgreSQL
+  kind: database
+  technology: SQL
+  deps: [pg, postgres, pg-promise, psycopg, psycopg2, psycopg2-binary, asyncpg, pgx]
+  images: [postgres, postgresql]
+  env_prefixes: [POSTGRES_, PGHOST, PGUSER]
+  schemes: [postgres, postgresql]
+- id: mysql
+  name: MySQL
+  kind: database
+  technology: SQL
+  deps: [mysql, mysql2, pymysql, mysqlclient, mysql-connector-python, aiomysql]
+  images: [mysql, mariadb]
+  env_prefixes: [MYSQL_, MARIADB_]
+  schemes: [mysql, mariadb]
+- id: mongodb
+  name: MongoDB
+  kind: database
+  technology: MongoDB protocol
+  deps: [mongodb, mongoose, pymongo, motor]
+  images: [mongo]
+  env_prefixes: [MONGO_, MONGODB_]
+  schemes: [mongodb]
+- id: redis
+  name: Redis
+  kind: database
+  technology: Redis protocol
+  deps: [redis, ioredis, aioredis, redis-py]
+  images: [redis, valkey]
+  env_prefixes: [REDIS_]
+  schemes: [redis, rediss]
+- id: sqlite
+  name: SQLite
+  kind: database
+  technology: SQL
+  deps: [better-sqlite3, sqlite3, aiosqlite, sqlite-utils]
+- id: elasticsearch
+  name: Elasticsearch
+  kind: database
+  technology: HTTPS/JSON
+  deps: ["@elastic/elasticsearch", elasticsearch, elasticsearch-py, opensearch-py]
+  images: [elasticsearch, opensearch]
+  env_prefixes: [ELASTICSEARCH_, ELASTIC_]
+- id: kafka
+  name: Kafka
+  kind: queue
+  technology: Kafka protocol
+  deps: [kafkajs, confluent-kafka, kafka-python, aiokafka, node-rdkafka]
+  images: [kafka, cp-kafka, redpanda]
+  env_prefixes: [KAFKA_]
+- id: rabbitmq
+  name: RabbitMQ
+  kind: queue
+  technology: AMQP
+  deps: [amqplib, pika, aio-pika, amqp-connection-manager]
+  images: [rabbitmq]
+  env_prefixes: [RABBITMQ_, AMQP_]
+  schemes: [amqp, amqps]
+- id: s3
+  name: Amazon S3
+  kind: system
+  technology: HTTPS
+  deps: ["@aws-sdk/client-s3", aws-sdk, boto3, aioboto3]
+  images: [minio, localstack]
+  env_prefixes: [AWS_, S3_]
+- id: stripe
+  name: Stripe
+  kind: system
+  technology: HTTPS
+  deps: [stripe, "@stripe/stripe-js", "@stripe/react-stripe-js"]
+  env_prefixes: [STRIPE_]
+- id: sendgrid
+  name: SendGrid
+  kind: system
+  technology: HTTPS
+  deps: ["@sendgrid/mail", sendgrid]
+  env_prefixes: [SENDGRID_]
+- id: twilio
+  name: Twilio
+  kind: system
+  technology: HTTPS
+  deps: [twilio]
+  env_prefixes: [TWILIO_]
+- id: openai
+  name: OpenAI
+  kind: system
+  technology: HTTPS
+  deps: [openai]
+  env_prefixes: [OPENAI_]
+- id: anthropic
+  name: Anthropic API
+  kind: system
+  technology: HTTPS
+  deps: ["@anthropic-ai/sdk", anthropic]
+  env_prefixes: [ANTHROPIC_]
+- id: firebase
+  name: Firebase
+  kind: system
+  technology: HTTPS
+  deps: [firebase, firebase-admin]
+  env_prefixes: [FIREBASE_]
+- id: auth0
+  name: Auth0
+  kind: system
+  technology: HTTPS
+  deps: [auth0, "@auth0/auth0-react", "@auth0/nextjs-auth0"]
+  env_prefixes: [AUTH0_]
+- id: sentry
+  name: Sentry
+  kind: system
+  technology: HTTPS
+  deps: ["@sentry/node", "@sentry/react", "@sentry/browser", sentry-sdk]
+  env_prefixes: [SENTRY_]
