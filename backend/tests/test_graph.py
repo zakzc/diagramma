@@ -1,8 +1,8 @@
-from tests.helpers import model_of
+from tests.helpers import model_of, view_edges
 
 
-def edges(m):
-    return {(r.source, r.target): r for r in m.relations}
+def edges(m, depth=1):
+    return view_edges(m, depth)
 
 
 def test_js_import_forms_resolve(tmp_path):
@@ -75,7 +75,10 @@ def test_import_counts_become_strength_and_self_edges_are_dropped(tmp_path):
         },
         "w",
     )
-    assert [(r.source, r.target, r.strength) for r in m.relations] == [("w_a", "w_b", 2)]
+    assert [(s, t, r.strength) for (s, t), r in edges(m).items()] == [("w_a", "w_b", 2)]
+    # at file level the same two imports are two separate edges, and x -> y stays inside a
+    leaf = {(s, t): r.strength for (s, t), r in edges(m, 2).items()}
+    assert leaf == {("w_a_x", "w_a_y"): 1, ("w_a_x", "w_b_p"): 1, ("w_a_y", "w_b_q"): 1}
 
 
 def test_import_evidence_creates_external_without_manifest_dependency(tmp_path):

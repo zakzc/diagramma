@@ -9,15 +9,20 @@ from sse_starlette.sse import EventSourceResponse
 
 from app import __version__
 from app.analysis.fetch import parse_repo_url, resolve_commit
+from app.errors import AppError
 from app.models import (
     DiagramCreate,
     DiagramCreated,
     DiagramRecord,
     DiagramSummary,
+    DiagramView,
     EditBody,
     ErrorResponse,
     Health,
 )
+from app.render.c4 import RenderMeta, render_c4
+from app.render.flowchart import drawn_relations, render_flowchart
+from app.render.view import build_view
 
 router = APIRouter(prefix="/api")
 
@@ -84,25 +89,72 @@ def delete_diagram(diagram_id: str, request: Request) -> Response:
     return Response(status_code=204)
 
 
+Format = Literal["c4", "flowchart"]
+
+
+def _generated(rec: DiagramRecord, fmt: Format, depth: int) -> tuple[str, int, int, int]:
+    """(Mermaid text, boxes, edges drawn, hubs marked) for a format at a depth."""
+    if not 1 <= depth <= rec.max_depth:
+        raise AppError("INVALID_DEPTH", f"Depth must be between 1 and {rec.max_depth}.")
+    meta = RenderMeta(
+        f"{rec.owner}/{rec.name}", rec.ref, rec.commit_sha, rec.commit_date, rec.tool_version
+    )
+    text = (render_c4 if fmt == "c4" else render_flowchart)(rec.model, meta, depth)
+    view = build_view(rec.model, depth)
+    if fmt == "flowchart":  # grouped edges, shared modules marked instead of wired
+        edges, hubs = drawn_relations(view)
+        return text, view.nodes, len(edges), len(hubs)
+    return text, view.nodes, len(view.relations), 0  # C4 can only connect boxes: every edge
+
+
+def _view(request: Request, diagram_id: str, fmt: Format, depth: int) -> DiagramView:
+    store = request.app.state.store
+    rec = store.get(diagram_id)
+    text, nodes, edges, hubs = _generated(rec, fmt, depth)
+    return DiagramView(
+        format=fmt,
+        depth=depth,
+        generated=text,
+        edited=store.get_edit(diagram_id, fmt, depth),
+        nodes=nodes,
+        edges=edges,
+        hubs=hubs,
+    )
+
+
+@router.get(
+    "/diagrams/{diagram_id}/views/{format}/{depth}",
+    response_model=DiagramView,
+    responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+)
+def get_view(diagram_id: str, format: Format, depth: int, request: Request) -> DiagramView:
+    """The diagram as `format` rolled up to `depth` (1 = top-level components only)."""
+    return _view(request, diagram_id, format, depth)
+
+
 @router.put(
-    "/diagrams/{diagram_id}/edits/{format}",
-    response_model=DiagramRecord,
-    responses={404: {"model": ErrorResponse}},
+    "/diagrams/{diagram_id}/edits/{format}/{depth}",
+    response_model=DiagramView,
+    responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
 )
 def save_edit(
-    diagram_id: str, format: Literal["c4", "flowchart"], body: EditBody, request: Request
-) -> DiagramRecord:
-    """Save the user's edited Mermaid text (text equal to the generated one clears the edit)."""
-    return request.app.state.store.set_edit(diagram_id, format, body.text)
+    diagram_id: str, format: Format, depth: int, body: EditBody, request: Request
+) -> DiagramView:
+    """Save the user's edited text for this view (text equal to the generated one clears it)."""
+    store = request.app.state.store
+    generated = _generated(store.get(diagram_id), format, depth)[0]
+    store.set_edit(diagram_id, format, depth, None if body.text == generated else body.text)
+    return _view(request, diagram_id, format, depth)
 
 
 @router.delete(
-    "/diagrams/{diagram_id}/edits/{format}",
-    response_model=DiagramRecord,
-    responses={404: {"model": ErrorResponse}},
+    "/diagrams/{diagram_id}/edits/{format}/{depth}",
+    response_model=DiagramView,
+    responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
 )
-def discard_edit(
-    diagram_id: str, format: Literal["c4", "flowchart"], request: Request
-) -> DiagramRecord:
+def discard_edit(diagram_id: str, format: Format, depth: int, request: Request) -> DiagramView:
     """Reset: discard the saved edit; the generated text is shown again."""
-    return request.app.state.store.set_edit(diagram_id, format, None)
+    store = request.app.state.store
+    _generated(store.get(diagram_id), format, depth)  # validates the depth
+    store.set_edit(diagram_id, format, depth, None)
+    return _view(request, diagram_id, format, depth)

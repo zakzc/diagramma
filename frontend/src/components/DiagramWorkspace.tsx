@@ -4,12 +4,14 @@ import { type EditFormat, getDiagram } from "../api/client";
 import { useDiagramEditor } from "../api/useDiagramEditor";
 import { useDebounced } from "../hooks/useDebounced";
 import CodePane from "./CodePane";
+import DepthControl from "./DepthControl";
 import DiagramPane from "./DiagramPane";
 import SplitLayout from "./SplitLayout";
 import StatusBar from "./StatusBar";
 import type { DiagramRecord } from "../api/client";
 
 export const RENDER_DEBOUNCE_MS = 400;
+export const LARGE_DIAGRAM_NODES = 150; // beyond this a diagram is slow to lay out and hard to read
 
 export default function DiagramWorkspace({ diagramId }: { diagramId: string }) {
   const q = useQuery({ queryKey: ["diagram", diagramId], queryFn: () => getDiagram(diagramId) });
@@ -22,7 +24,9 @@ function Editor({ d }: { d: DiagramRecord }) {
   const ed = useDiagramEditor(d);
   const [renderError, setRenderError] = useState<string | null>(null);
   // The diagram follows the editor after a short pause; switching tab/diagram applies at once.
-  const renderText = useDebounced(ed.text, RENDER_DEBOUNCE_MS, `${d.id}:${ed.format}`);
+  const viewKey = `${d.id}:${ed.format}:${ed.depth}`;
+  // A new view (or a view finishing its load) applies at once; only typing is debounced.
+  const renderText = useDebounced(ed.text, RENDER_DEBOUNCE_MS, `${viewKey}:${ed.loading}`);
 
   const btn = "rounded border px-2 py-0.5 text-xs border-slate-300 dark:border-slate-600";
   const tab = (f: EditFormat, name: string) => (
@@ -30,7 +34,7 @@ function Editor({ d }: { d: DiagramRecord }) {
       role="tab"
       aria-selected={ed.format === f}
       className={`${btn} ${ed.format === f ? "bg-slate-200 dark:bg-slate-700" : ""}`}
-      disabled={f === "flowchart" && !d.mermaid_flowchart}
+      disabled={ed.loading}
       onClick={() => {
         ed.setFormat(f);
         setRenderError(null);
@@ -41,7 +45,8 @@ function Editor({ d }: { d: DiagramRecord }) {
   );
 
   // Offer the flowchart only when the generated C4 itself fails, not while the user is mid-edit.
-  const offerFlowchart = renderError && ed.format === "c4" && !ed.modified && !!d.mermaid_flowchart;
+  const offerFlowchart = renderError && ed.format === "c4" && !ed.modified && !ed.loading;
+  const large = ed.nodes > LARGE_DIAGRAM_NODES;
 
   return (
     <section aria-label="Diagram workspace" className="flex h-full min-h-0 flex-col">
@@ -53,7 +58,39 @@ function Editor({ d }: { d: DiagramRecord }) {
           {d.commit_sha.slice(0, 7)} · {d.container_count} containers · {d.component_count} components ·{" "}
           {d.model.externals.length} external
         </span>
+        <DepthControl
+          depth={ed.depth}
+          max={ed.maxDepth}
+          auto={ed.autoDepth}
+          disabled={ed.loading}
+          onChange={(n) => {
+            ed.setDepth(n);
+            setRenderError(null);
+          }}
+        />
+        <span className="text-xs text-slate-500" data-testid="view-size">
+          {ed.loading ? "loading…" : `showing ${ed.nodes} components · ${ed.edges} relations`}
+        </span>
+        {!ed.loading && ed.hubs > 0 && (
+          <span
+            className="text-xs text-slate-500"
+            data-testid="hub-note"
+            title="Shared modules that much of the code depends on are drawn once, with a dashed border and a 'used by N' count, instead of with every incoming line. The C4 tab draws every edge."
+          >
+            · {ed.hubs} shared {ed.hubs === 1 ? "module" : "modules"} not wired (dashed)
+          </span>
+        )}
       </div>
+      {large && !ed.loading && (
+        <div className="border-b bg-amber-50 px-4 py-1 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          This view has {ed.nodes} components and may be slow and hard to read. Try a lower depth.
+        </div>
+      )}
+      {ed.loadError && (
+        <div role="alert" className="border-b bg-red-50 px-4 py-1 text-xs text-red-900 dark:bg-red-950 dark:text-red-200">
+          Could not load this view: {ed.loadError}
+        </div>
+      )}
       {offerFlowchart && (
         <div className="flex items-center gap-2 border-b bg-red-50 px-4 py-1.5 text-sm text-red-900 dark:bg-red-950 dark:text-red-200">
           The C4 diagram could not be rendered.
@@ -70,38 +107,42 @@ function Editor({ d }: { d: DiagramRecord }) {
         </ul>
       )}
       <div className="min-h-0 flex-1">
-        <SplitLayout
-          left={{
-            title: "Mermaid code",
-            body: (
-              <div className="flex h-full flex-col">
-                <div className="min-h-0 flex-1">
-                  <CodePane value={ed.text} onChange={ed.setText} />
+        {!ed.ready ? (
+          <p className="p-4 text-sm text-slate-500">{ed.loadError ? "" : "Loading diagram…"}</p>
+        ) : (
+          <SplitLayout
+            left={{
+              title: "Mermaid code",
+              body: (
+                <div className="flex h-full flex-col">
+                  <div className="min-h-0 flex-1">
+                    <CodePane value={ed.text} onChange={ed.setText} readOnly={ed.loading} />
+                  </div>
+                  <StatusBar
+                    error={renderError}
+                    dirty={ed.dirty}
+                    canReset={ed.modified}
+                    hasSavedEdit={ed.hasSavedEdit}
+                    saving={ed.saving}
+                    saveError={ed.saveError}
+                    onSave={ed.save}
+                    onReset={ed.reset}
+                  />
                 </div>
-                <StatusBar
-                  error={renderError}
-                  dirty={ed.dirty}
-                  canReset={ed.modified}
-                  hasSavedEdit={ed.hasSavedEdit}
-                  saving={ed.saving}
-                  saveError={ed.saveError}
-                  onSave={ed.save}
-                  onReset={ed.reset}
-                />
-              </div>
-            ),
-          }}
-          right={{
-            title: "Diagram",
-            actions: (
-              <div role="tablist" aria-label="Format" className="flex gap-1">
-                {tab("c4", "C4")}
-                {tab("flowchart", "Flowchart")}
-              </div>
-            ),
-            body: <DiagramPane text={renderText} fitKey={`${d.id}:${ed.format}`} onResult={setRenderError} />,
-          }}
-        />
+              ),
+            }}
+            right={{
+              title: "Diagram",
+              actions: (
+                <div role="tablist" aria-label="Format" className="flex gap-1">
+                  {tab("flowchart", "Flowchart")}
+                  {tab("c4", "C4")}
+                </div>
+              ),
+              body: <DiagramPane text={renderText} fitKey={viewKey} onResult={setRenderError} />,
+            }}
+          />
+        )}
       </div>
     </section>
   );

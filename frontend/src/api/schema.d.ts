@@ -74,7 +74,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/diagrams/{diagram_id}/edits/{format}": {
+    "/api/diagrams/{diagram_id}/views/{format}/{depth}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get View
+         * @description The diagram as `format` rolled up to `depth` (1 = top-level components only).
+         */
+        get: operations["get_view_api_diagrams__diagram_id__views__format___depth__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/diagrams/{diagram_id}/edits/{format}/{depth}": {
         parameters: {
             query?: never;
             header?: never;
@@ -84,15 +104,15 @@ export interface paths {
         get?: never;
         /**
          * Save Edit
-         * @description Save the user's edited Mermaid text (text equal to the generated one clears the edit).
+         * @description Save the user's edited text for this view (text equal to the generated one clears it).
          */
-        put: operations["save_edit_api_diagrams__diagram_id__edits__format__put"];
+        put: operations["save_edit_api_diagrams__diagram_id__edits__format___depth__put"];
         post?: never;
         /**
          * Discard Edit
          * @description Reset: discard the saved edit; the generated text is shown again.
          */
-        delete: operations["discard_edit_api_diagrams__diagram_id__edits__format__delete"];
+        delete: operations["discard_edit_api_diagrams__diagram_id__edits__format___depth__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -126,6 +146,24 @@ export interface components {
             weight: number;
             /** Evidence */
             evidence: string[];
+            /** Parent */
+            parent: string | null;
+            /**
+             * Depth
+             * @default 1
+             */
+            depth: number;
+            /**
+             * Kind
+             * @default folder
+             * @enum {string}
+             */
+            kind: "group" | "folder" | "file";
+            /**
+             * File Count
+             * @default 0
+             */
+            file_count: number;
         };
         /** Container */
         Container: {
@@ -196,10 +234,23 @@ export interface components {
             mermaid_c4: string;
             /** Mermaid Flowchart */
             mermaid_flowchart: string | null;
-            /** Edited C4 */
-            edited_c4: string | null;
-            /** Edited Flowchart */
-            edited_flowchart: string | null;
+            /**
+             * Commit Date
+             * @default
+             */
+            commit_date: string;
+            /**
+             * Max Depth
+             * @default 1
+             */
+            max_depth: number;
+            /**
+             * Auto Depth
+             * @default 1
+             */
+            auto_depth: number;
+            /** Saved Edits */
+            saved_edits: components["schemas"]["SavedEdit"][];
             model: components["schemas"]["Model"];
             /** Warnings */
             warnings: string[];
@@ -231,6 +282,32 @@ export interface components {
             component_count: number;
             /** Tool Version */
             tool_version: string;
+        };
+        /**
+         * DiagramView
+         * @description One rendering of a diagram: a format at a depth, plus the user's saved edit if any.
+         */
+        DiagramView: {
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "c4" | "flowchart";
+            /** Depth */
+            depth: number;
+            /** Generated */
+            generated: string;
+            /** Edited */
+            edited: string | null;
+            /** Nodes */
+            nodes: number;
+            /** Edges */
+            edges: number;
+            /**
+             * Hubs
+             * @default 0
+             */
+            hubs: number;
         };
         /** EditBody */
         EditBody: {
@@ -308,6 +385,19 @@ export interface components {
              * @default 1
              */
             strength: number;
+        };
+        /**
+         * SavedEdit
+         * @description Which views the user has saved an edit for (the text comes from the view endpoint).
+         */
+        SavedEdit: {
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "c4" | "flowchart";
+            /** Depth */
+            depth: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -531,13 +621,56 @@ export interface operations {
             };
         };
     };
-    save_edit_api_diagrams__diagram_id__edits__format__put: {
+    get_view_api_diagrams__diagram_id__views__format___depth__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 diagram_id: string;
                 format: "c4" | "flowchart";
+                depth: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiagramView"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    save_edit_api_diagrams__diagram_id__edits__format___depth__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                diagram_id: string;
+                format: "c4" | "flowchart";
+                depth: number;
             };
             cookie?: never;
         };
@@ -553,7 +686,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DiagramRecord"];
+                    "application/json": components["schemas"]["DiagramView"];
                 };
             };
             /** @description Not Found */
@@ -565,24 +698,25 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    discard_edit_api_diagrams__diagram_id__edits__format__delete: {
+    discard_edit_api_diagrams__diagram_id__edits__format___depth__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 diagram_id: string;
                 format: "c4" | "flowchart";
+                depth: number;
             };
             cookie?: never;
         };
@@ -594,7 +728,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DiagramRecord"];
+                    "application/json": components["schemas"]["DiagramView"];
                 };
             };
             /** @description Not Found */
@@ -606,13 +740,13 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

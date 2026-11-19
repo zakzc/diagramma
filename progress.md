@@ -4,7 +4,7 @@ Tracks implementation of the MVP described in [SPEC.md](SPEC.md) / [README.md](R
 
 **Legend:** `[ ]` todo · `[~]` in progress · `[x]` done · `[-]` dropped (add a reason)
 
-**Current milestone:** none. MVP complete: all six milestones, all cross-cutting items and acceptance 1-8 are ticked. Roadmap (SPEC §12) is not started.
+**Current milestone:** 7 (deeper components, clearer view) done on branch `deeper-components`, not yet pushed or merged. MVP (1-6) is in PR #1. Roadmap (SPEC §12) otherwise not started.
 **Last updated:** 2026-11-19
 
 ---
@@ -68,6 +68,19 @@ Tracks implementation of the MVP described in [SPEC.md](SPEC.md) / [README.md](R
 - [x] Copy .mmd uses current editor text
 - [x] Light/dark follows system theme
 
+## Milestone 7 — Deeper components and a clearer view
+Requested after the MVP: components were only one level deep and dense diagrams were unreadable.
+- [x] Components as a tree (folders nested to 6 levels, pass-through folders merged, files as leaves for containers up to 300 files)
+- [x] Role inheritance down the tree; empty `__init__.py` files mapped (not drawn) so import edges survive
+- [x] One import statement = one dependency (no double count for `from pkg import submodule`)
+- [x] Depth roll-up (`render/view.py`): relations stored between leaves, re-pointed to any depth; auto depth = deepest level with at most 60 boxes
+- [x] Nested flowchart (subgraphs, role colours, edge thickness and `×N`, no "Uses" label), nested `Boundary` in C4
+- [x] Grouped edges: edges crossing a group attach to the sibling groups; hubs (>= 8 dependents and >= 25% of dependents) drawn once with "used by N"
+- [x] Top-level cap (60) now merges subtrees; schema v2 (edits table keyed by format and depth, depth range columns) with an in-place v1 migration
+- [x] API: `GET …/views/{format}/{depth}`, `PUT`/`DELETE …/edits/{format}/{depth}`, `INVALID_DEPTH`
+- [x] UI: Depth control, per-view drafts and edits, size/hub note, large-view warning, Flowchart as default tab
+- [x] Verified in a real browser on fastapi template, flask, typer and Django (all depths, edits scoped per depth across a reload)
+
 ## Cross-cutting
 - [x] Unified error shape `{ "error": { code, message } }`
 - [x] CORS limited to local frontend origin; bind `127.0.0.1`
@@ -94,6 +107,7 @@ Tracks implementation of the MVP described in [SPEC.md](SPEC.md) / [README.md](R
 
 | Date | Note |
 |---|---|
+| 2026-11-19 | Milestone 7 (branch `deeper-components`): nested components, depth control, grouped edges, hubs, per-depth edits, schema v2 with migration. 152 backend and 71 frontend tests pass; verified in a real browser on four repos. |
 | 2026-11-19 | Final pass: error envelope everywhere, CORS and loopback-bind tests, `python -m app`, README commands verified clean, README/SPEC corrected, acceptance 3 checked with a second Mermaid version, 24 extra backend tests. 102 backend and 59 frontend tests pass. |
 | 2026-11-19 | Milestone 6 done: edit endpoints, split view with folds, resize and persistence, CodeMirror pane, live preview with error bar, Save/Reset, per-format edits, pan/zoom + Fit, system theme, narrow-screen stacking. Verified end to end in a real browser. 74 backend and 59 frontend tests pass. |
 | 2026-11-19 | Milestone 5 done: SQLite store, list/get/delete endpoints, reuse by repo+ref+commit via `ls-remote`, history sidebar with reopen, delete and fold. Download replaced by Copy. Verified live: generate, restart, history persists, case-insensitive re-submit reuses the entry in 0.85s, delete. 70 backend and 29 frontend tests pass. |
@@ -104,6 +118,16 @@ Tracks implementation of the MVP described in [SPEC.md](SPEC.md) / [README.md](R
 | 2026-11-19 | SPEC v0.4 written; README and progress tracker added. No code yet. |
 
 ## Decisions & open questions
+
+- M7: the leaf level is **files** for containers up to 300 source files and **folders** above that. Reason: a file-level model of a 3,000-file repo is large and no depth would be readable; folder level keeps Django at 228 components (analysed in 6.5s).
+- M7: edges are stored only between leaves. Any depth is computed on demand by rolling them up, so no re-analysis and no extra storage. Only the auto-depth texts are stored; other depths are rendered from `model_json` per request (milliseconds even for Django).
+- M7: **Flowchart is now the default tab** (was C4). Seen in a real browser: Mermaid's C4 layout routes edges through boxes once boundaries nest, while the flowchart stays legible. C4 is kept and draws every edge.
+- M7: **hub rule** chosen from real data: Django's `conf`/`utils`/`core` have 14-15 of 16 dependents, Flask's `globals` 11, while the FastAPI template and typer have no component above 6. So: at least 8 dependents and at least 25% of all dependents. Hub incoming edges are not drawn in the flowchart (the node says "used by N", the header comment lists hubs, the UI notes it). Databases and other externals are never hubs. This is a deliberate loss of detail: there is no details panel yet to list exactly who uses a hub.
+- M7: edges crossing a group boundary attach to the sibling groups below the common parent, and across containers or to externals to the level-1 component. This takes the FastAPI template at depth 3 from 320 edges to 84, and Django at depth 1 from 114 to 46 (with hubs).
+- M7: layout direction inside groups is `LR` (was `TB`): measured on the real text, it gives a landscape drawing that fits the pane better (fit scale 0.16 to 0.21).
+- M7: the "boxes" count shown to the user counts drawn leaves only (an expanded group is a boundary), and it is the same number `auto_depth` budgets. A test locks these together (they had drifted: typer showed 65 against a cap of 60).
+- M7: tool version bumped to 0.2.0, so stored diagrams are regenerated on the next submit (same id, saved edits kept). A v1 database migrates in place; its edits move to the `edits` table at depth 1.
+- M7: not done / known limits: no per-component details panel (the model has the data); very coupled code is still busy at depth 2+ (Django: ~130 edges at the default depth); layout direction and hub thresholds are not user-configurable.
 
 - Final pass: every error now uses the `{error:{code,message}}` envelope, including unknown routes (404), wrong methods (405) and unexpected exceptions (500, details not leaked). New codes `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `HTTP_ERROR`. CORS verified: only `localhost:5173` / `127.0.0.1:5173` get headers; other origins get nothing.
 - Final pass: added `python -m app` ([\_\_main\_\_.py](backend/app/__main__.py)), which always binds `127.0.0.1` (the host is deliberately not configurable). Stopping it leaves no orphaned worker or manager processes (checked).

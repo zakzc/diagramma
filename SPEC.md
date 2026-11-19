@@ -1,7 +1,13 @@
 # Diagramma — Specification
 
-**Version:** 0.6
+**Version:** 0.7
 **Purpose:** A locally run web app. You paste a GitHub repo URL, the backend analyses the repo, and the frontend shows a C4-style **Component diagram** of the *entire application* as a Mermaid graph. Past diagrams are kept in a history list so you can reopen them.
+
+### Changes from v0.6
+- **Deeper components.** A container is no longer split only by its top-level folders: components form a **tree** (folders, sub-folders and, for containers up to 300 source files, individual files; §8). Relations are stored between the leaves and **rolled up to a chosen depth** when rendering. The UI has a **Depth** control; the default is the deepest level that still shows at most 60 boxes.
+- **A clearer flowchart.** The flowchart is now the default view (Mermaid's C4 layout cannot cope with nested boundaries or dense graphs) and shows nested subgraphs, role colours, edge thickness and `×N` counts for coupling, no label for the default "Uses", edges that cross a group attached to the sibling groups instead of every file, and **hubs** (shared modules) drawn once with a "used by N" note instead of N incoming lines (§9.2). C4 remains available and draws every edge.
+- **Edits are per view.** A saved edit belongs to one (format, depth). New `GET …/views/{format}/{depth}`; `PUT`/`DELETE …/edits/{format}/{depth}` (§5.2). Schema v2 stores edits in their own table and migrates v1 databases in place (§5.3).
+- The 60-component cap now applies to **top-level** components only; deeper levels are chosen with Depth.
 
 ### Changes from v0.5
 - The split view is a custom component instead of `react-resizable-panels` (§4.3). Keyboard shortcuts: **Alt+1** folds/unfolds the code pane, **Alt+2** the diagram pane.
@@ -43,7 +49,7 @@ A C4 Component diagram normally zooms into one container. Diagramma draws the wh
 | C4 element | Meaning in Diagramma | Mermaid construct |
 |---|---|---|
 | **Container** | A runnable/deployable unit: service, web app, worker, CLI, library, monorepo package | `Container_Boundary` |
-| **Component** | A cohesive module/feature folder inside a container | `Component` |
+| **Component** | A cohesive module inside a container: a feature folder, a sub-folder, or (small containers) a file. Components nest; folders that contain others are *groups* | `Component`, nested `Boundary` for groups (C4); nested `subgraph` (flowchart) |
 | **Data store / queue** | Databases or queues used by the app | `ComponentDb`, `ContainerDb`, `ComponentQueue` |
 | **External system** | Third-party services detected from dependencies/config | `System_Ext` |
 | **Relationship** | Dependency between components, containers or externals | `Rel` |
@@ -83,7 +89,7 @@ A top bar for input, a collapsible history sidebar, and below the bar a **horizo
 ┌─────────────────────────────────────────────────────────────────────┐
 │ ☰  Diagramma  [ https://github.com/owner/repo ] [ref] [Generate]    │
 ├────────┬──────────────────────────┬─────────────────────────────────┤
-│History │ Mermaid code        [‹]  │ Diagram   (C4|Flowchart) [›]    │
+│History │ Mermaid code        [‹]  │ Diagram  (Flowchart|C4)  [›]    │
 │(fold-  │ ───────────────────────  │                                 │
 │ able)  │ C4Component              │                                 │
 │ ▸ a    │   title ...              │      (pan / zoom rendering)     │
@@ -118,7 +124,8 @@ A top bar for input, a collapsible history sidebar, and below the bar a **horizo
   - **Live preview:** edits re-render the diagram after a short debounce (~400 ms). If the text is invalid, the last good render stays visible and the error (with line number when Mermaid provides it) is shown in a status bar under the editor.
   - **Reset** returns the text to the generated version. A dirty marker shows when the text differs from what is saved.
   - **Save** stores the edited text on the history entry (so the fixed version survives reload/restart). Re-generating the repo never overwrites saved edits silently: the original generated text is kept alongside, and a Reset restores it.
-- **Diagram pane:** renders the current editor text with pan/zoom and fit-to-screen. The **C4 / Flowchart** toggle sits in this pane's header. If C4 fails to render, the error is shown and the flowchart is offered.
+- **Diagram pane:** renders the current editor text with pan/zoom and fit-to-screen. The **Flowchart / C4** toggle sits in this pane's header; **Flowchart is the default**. If C4 fails to render, the error is shown and the flowchart is offered.
+- **Depth control** (above the split, shown when the model has more than one level): buttons 1…max (a dropdown beyond 8), the default level marked. Each (format, depth) is its own view with its own editor text, draft and saved edit; the header shows how many boxes and relations the view draws, how many shared modules were drawn once instead of wired, and warns above 150 boxes.
 - **Export:** **Copy .mmd** puts the *current editor text* (including unsaved edits) of the active format on the clipboard. There is no file download.
 - **History:** sidebar list of generated diagrams (repo, ref, short SHA, date, container/component counts). Click to reopen from storage; delete entry. Re-submitting the same repo+ref at the same commit reuses the existing entry.
 - Light/dark following the system theme.
@@ -156,7 +163,8 @@ A top bar for input, a collapsible history sidebar, and below the bar a **horizo
 | `GET /api/jobs/{jobId}/events` | SSE: `{stage, message}` events, then `done {diagramId}` or `error {code, message}`. |
 | `GET /api/diagrams` | History list (summary fields). |
 | `GET /api/diagrams/{id}` | Full record: both Mermaid texts, metadata, warnings. |
-| `PUT /api/diagrams/{id}/edits/{format}` | Body `{ text }`, `format` is `c4` or `flowchart`. Saves the user's edited Mermaid text. `DELETE` on the same path discards the edit (Reset). |
+| `GET /api/diagrams/{id}/views/{format}/{depth}` | One rendering: the generated text, the user's saved edit for that exact view (or null), and the number of boxes, edges and hubs drawn. `depth` is 1…`max_depth` (else `INVALID_DEPTH`). |
+| `PUT /api/diagrams/{id}/edits/{format}/{depth}` | Body `{ text }`. Saves the user's edited text for that view (text equal to the generated one clears the edit). `DELETE` on the same path discards it (Reset). Both return the view. |
 | `DELETE /api/diagrams/{id}` | Remove from history. |
 | `GET /api/health` | Liveness + version. |
 
@@ -168,14 +176,21 @@ One SQLite file in the user data dir (`$DIAGRAMMA_DATA_DIR`, default `~/.local/s
 ```
 diagrams(
   id TEXT PK, repo_url TEXT, owner TEXT, name TEXT, ref TEXT, commit_sha TEXT,
-  created_at TEXT, container_count INT, component_count INT,
-  mermaid_c4 TEXT, mermaid_flowchart TEXT,            -- as generated, never modified
-  edited_c4 TEXT NULL, edited_flowchart TEXT NULL,    -- user's saved edits (NULL = none)
+  commit_date TEXT, created_at TEXT, container_count INT, component_count INT,
+  max_depth INT, auto_depth INT,                      -- deepest component level; default view
+  mermaid_c4 TEXT, mermaid_flowchart TEXT,            -- as generated at auto_depth, never modified
   model_json TEXT,
   warnings_json TEXT, tool_version TEXT
 )
 UNIQUE (repo_url, ref, commit_sha)
+
+edits(                                                -- the user's saved edits, one per view
+  diagram_id TEXT FK -> diagrams ON DELETE CASCADE, format TEXT ('c4'|'flowchart'),
+  depth INT, text TEXT,
+  PRIMARY KEY (diagram_id, format, depth)
+)
 ```
+`PRAGMA user_version` is 2. A version-1 database (edits as two columns on `diagrams`) is migrated in place: those edits move to the `edits` table at depth 1. Other depths are rendered on demand from `model_json`, so only the auto-depth texts are stored.
 Clones go to `~/.cache/diagramma/repos/`. Generated diagrams do not depend on the cache afterwards.
 
 ### 5.4 Jobs
@@ -214,8 +229,12 @@ class Component(BaseModel):
     technology: str | None
     paths: list[str]
     description: str | None
-    weight: int                  # file count / LOC
+    weight: int                  # LOC (a group: the sum of its parts)
     evidence: list[str]
+    parent: str | None           # id of the enclosing group; None = directly under the container
+    depth: int                   # 1 = directly under the container
+    kind: Literal["group","folder","file"]
+    file_count: int              # source files in this component's subtree
 
 class Container(BaseModel):
     id: str; name: str
@@ -262,21 +281,23 @@ Heuristic, deterministic, and every element keeps an `evidence` note.
 - No markers → a single container named after the repo.
 
 **Components**
-- Each container's source root (`src/`, `app/`, `lib/`, or the package folder) → one component per top-level feature/module folder, never per file.
-- Role from folder/file names (`controllers`, `routes`, `services`, `repositories`, `models`, `components`, `pages`, `middleware`, …).
-- Files directly in the source root are grouped into one "Core" component.
+- Each container's source root (`src/`, `app/`, `lib/`, or the package folder) is turned into a **tree**: one component per folder, nested to at most **6 levels**. Pass-through folders (no files of their own, one sub-folder) are merged into one level (`shared/a/b/c` → "Shared / A / B / C").
+- **Small containers (up to 300 source files)** also get one component per **file**, so the deepest level is every module. **Larger containers** stop at folders: a folder is split only when it holds at least 4 files and has sub-folders, and a split folder's own files form one "Files" component.
+- Role from folder/file names (`controllers`, `routes`, `services`, `repositories`, `models`, `components`, `pages`, `middleware`, …); a sub-folder or file with no recognisable name inherits its parent's role.
+- Files directly in the source root are grouped into one "Core" component. Empty `__init__.py` files are not components, but imports that resolve to them still count (they attach to the heaviest component of their folder).
 - Tests, fixtures, mocks, docs, build output and generated code are excluded.
 
 **Relationships**
-- Parse imports with tree-sitter → file-level graph → roll up to component edges, then to container edges (cross-package imports, docker-compose `depends_on`, HTTP base-URL env vars when obvious).
-- Parallel edges collapse into one labelled edge. Label from the role pair (e.g. controller→service "Uses", service→repository "Reads/writes via").
+- Parse imports with tree-sitter → file-level graph → edges between the **leaf** components (cross-package imports, docker-compose `depends_on`, HTTP base-URL env vars when obvious). One import statement is one dependency (`from pkg import a, b` depends on the submodules `a`, `b`, not additionally on `pkg/__init__`).
+- Rendering **rolls the leaf edges up** to the chosen depth: every leaf is represented by its ancestor at that level; parallel edges merge and their import counts add up.
+- Label from the role pair (e.g. controller→service "Uses", service→repository "Reads/writes via").
 
 **External systems & data stores**
 - Small built-in catalogue (Postgres, MySQL, MongoDB, Redis, Kafka, RabbitMQ, S3, Stripe, SendGrid, …) matched by dependency names, docker-compose images, and env var names.
 - Databases/queues use the cylinder/queue symbols.
 
 **Readability (basic)**
-- If components exceed a cap (default 60), merge the smallest siblings into "Other <container>" nodes and add a warning. Anything smarter is on the roadmap.
+- If **top-level** components exceed a cap (default 60), merge the smallest into "Other <container>" (absorbing their sub-trees) and add a warning. Deeper levels are not capped: the user chooses them with Depth, and the default depth is the deepest one that shows at most 60 boxes.
 
 ---
 
@@ -308,10 +329,14 @@ C4Component
     Rel(repo, db, "Reads/writes", "SQL")
     Rel(svc, stripe, "Charges payments", "HTTPS")
 ```
-IDs are sanitised to `[A-Za-z0-9_]`, labels escaped, and a header comment records repo, ref, commit SHA, date and tool version.
+IDs are sanitised to `[A-Za-z0-9_]`, labels escaped, and a header comment records repo, ref, depth, commit SHA, commit date and tool version. Folder groups are drawn as nested `Boundary(...)` inside the container's `Container_Boundary`. Mermaid's C4 layout copes poorly with nesting and dense graphs, so C4 is best at low depth; every relation between boxes is drawn.
 
-### 9.2 Flowchart fallback
-Standard `flowchart` with one `subgraph` per container, C4-style colours via `classDef`, cylinders for databases, and node text as **Name / [Component: Tech] / description**. Renders in virtually every Mermaid viewer and copes better with large diagrams.
+### 9.2 Flowchart (default view)
+Standard `flowchart LR` with one `subgraph` per container and **nested subgraphs for folder groups** (file counts in their titles), cylinders for databases, and node text as **Name / [Component: Tech] / description** (files stay compact). Renders in virtually every Mermaid viewer without special directives and copes with large diagrams far better than C4. To stay readable it:
+- colours each box by **role** (`classDef`) and draws a "container"/"external" palette for the rest;
+- draws **edge thickness** from the number of imports (1 = default, +1px per doubling, max 7px) and prints `×N` for N > 1; the default label "Uses" is not printed, other labels and technologies are;
+- attaches edges that **cross a group boundary** to the sibling groups just below the common parent (across containers and to external systems: to the level-1 component), while edges inside a group keep file-level detail; parallel edges merge;
+- marks **hubs** (shared modules such as utils/config/core): a component with at least 8 dependents *and* at least 25% of all dependents is drawn once with a dashed border and "used by N", and its incoming edges are not drawn (a comment line lists them). Databases and other external systems are never hubs.
 
 ---
 
@@ -334,7 +359,8 @@ diagramma/
         components.py
         relations.py
         externals.py       # + catalogue.yaml
-        reduce.py          # basic cap/merge
+        reduce.py          # top-level cap/merge
+      render/view.py       # depth roll-up, grouped edges, hubs
       render/
         c4.py
         flowchart.py
@@ -400,7 +426,7 @@ Roughly in the order I'd suggest:
 
 | Risk | Mitigation |
 |---|---|
-| Mermaid `C4Component` is experimental; layout can be cramped for big systems | Flowchart fallback, component cap, pan/zoom |
+| Mermaid `C4Component` is experimental; layout is poor for nested or dense diagrams | Flowchart is the default view; depth control; hub and edge grouping; component cap; pan/zoom |
 | Heuristics misclassify some repos | Evidence stored per element; overrides on the roadmap |
 | "Component" boundaries are subjective | Folder conventions first, smarter clustering later |
 | Dynamic dependencies (DI, reflection, runtime URLs) are invisible to static analysis | Documented limitation; use docker-compose and framework hints where possible |

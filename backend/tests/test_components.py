@@ -1,9 +1,10 @@
 from tests.helpers import model_of
 
 
-def comps(m, container_id):
+def comps(m, container_id, depth=1):
+    """Components of one level, by name (level 1 = the top-level folders)."""
     c = next(c for c in m.containers if c.id == container_id)
-    return {k.name: k for k in c.components}
+    return {k.name: k for k in c.components if k.depth == depth}
 
 
 def test_feature_folders_roles_and_core(tmp_path):

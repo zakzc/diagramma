@@ -1,5 +1,5 @@
 from app.render.c4 import RenderMeta, render_c4
-from tests.helpers import COMPOSE_MONOREPO, model_of
+from tests.helpers import COMPOSE_MONOREPO, model_of, view_edges
 
 
 def by_id(items):
@@ -24,11 +24,13 @@ def test_compose_monorepo(tmp_path):
     }
     assert e["postgres"].evidence  # every element keeps evidence
 
-    rels = {(r.source, r.target): r for r in m.relations}
+    rels = view_edges(m, 1)
     assert rels[("api_repositories", "postgres")].label == "Reads/writes"  # import psycopg2
     assert rels[("api_services", "stripe")].technology == "HTTPS"  # import stripe
     assert ("api_repositories", "redis") in rels  # compose-only evidence -> repository component
     assert ("web_api", "api_routes") in rels  # compose depends_on, web -> api
+    deep = view_edges(m, 2)  # one level deeper the web api folder shows its two files
+    assert any(s.startswith("web_api_") and t == "api_routes" for s, t in deep)
     assert not any(r.target in {"web", "web_core"} and r.source == "svc_proxy" for r in m.relations)
 
 
@@ -50,7 +52,7 @@ def test_npm_workspaces_and_sibling_dependency(tmp_path):
     c = by_id(m.containers)
     assert set(c) == {"server", "shared", "cli"}  # root aggregator is not a container
     assert (c["server"].kind, c["shared"].kind, c["cli"].kind) == ("api", "library", "cli")
-    assert {(r.source, r.target) for r in m.relations} == {
+    assert set(view_edges(m, 1)) == {
         ("server_core", "shared_core"),  # bare import of the sibling package '@acme/shared'
         ("server_core", "postgres"),  # 'pg' dependency; no import evidence in the sample
     }

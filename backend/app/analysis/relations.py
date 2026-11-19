@@ -73,9 +73,15 @@ def role_label(src: Component, dst: Component) -> str:
     return ROLE_LABEL.get((src.role, dst.role), "Uses")
 
 
+def _leaves(det: Detected) -> list[Component]:
+    """Components that own files. Groups only organise; relations attach to leaves."""
+    parents = {c.parent for c in det.container.components if c.parent}
+    return [c for c in det.container.components if c.id not in parents]
+
+
 def _rep(det: Detected, prefer: list[str]) -> str:
-    """Endpoint id standing in for a whole container (a component, else the container)."""
-    comps = det.container.components
+    """Endpoint id standing in for a whole container (a leaf component, else the container)."""
+    comps = _leaves(det)
     if not comps:
         return det.container.id
     for role in prefer:
@@ -86,9 +92,24 @@ def _rep(det: Detected, prefer: list[str]) -> str:
 
 
 def _core(det: Detected) -> str:
+    """The container's entry component: its "Core"/"Main" (its heaviest leaf if that is a group)."""
     comps = det.container.components
     core = [c for c in comps if c.evidence and c.evidence[0].startswith("files in ")]
-    return core[0].id if core else _rep(det, [])
+    if not core:
+        return _rep(det, [])
+    top = core[0]
+    leaves = [c for c in _leaves(det) if c.id == top.id or _under(c, top.id, comps)]
+    return max(leaves, key=lambda c: (c.weight, c.id)).id
+
+
+def _under(c: Component, ancestor: str, comps: list[Component]) -> bool:
+    by_id = {k.id: k for k in comps}
+    cur = by_id.get(c.parent or "")
+    while cur is not None:
+        if cur.id == ancestor:
+            return True
+        cur = by_id.get(cur.parent or "")
+    return False
 
 
 def component_relations(

@@ -2,6 +2,7 @@ from pathlib import Path
 
 from app.analysis.build import build_model
 from app.analysis.scan import scan_repo
+from app.render.view import build_view
 
 
 def make_repo(root: Path, files: dict[str, str]) -> Path:
@@ -10,6 +11,11 @@ def make_repo(root: Path, files: dict[str, str]) -> Path:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text)
     return root
+
+
+def view_edges(m, depth: int = 1):
+    """Relations as drawn at `depth`, keyed by (source, target)."""
+    return {(r.source, r.target): r for r in build_view(m, depth).relations}
 
 
 def model_of(root: Path, files: dict[str, str], name: str = "demo"):

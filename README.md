@@ -2,11 +2,12 @@
 
 Paste a GitHub repo URL and get a C4-style **Component diagram** of the whole application, rendered with Mermaid. Everything runs locally; the only network use is talking to GitHub (`git fetch` / `ls-remote`).
 
+- See how the code is organised as **nested components** (folders, sub-folders, files) and how they depend on each other, at a **depth you choose**.
 - Edit the Mermaid code live in a split view (code 1/3, diagram 2/3, either pane foldable).
 - Copy the raw Mermaid (`.mmd`) text and use it in any Mermaid viewer.
 - Past diagrams are kept in a history list and reopen without re-analysing.
 
-> **Status:** MVP complete (SPEC §11 acceptance 1-8 met). [SPEC.md](SPEC.md) is the full design (v0.6), [progress.md](progress.md) is the build log with every decision and deviation. If this README and SPEC.md disagree, SPEC.md wins; fix whichever is wrong.
+> **Status:** MVP complete (SPEC §11 acceptance 1-8 met). [SPEC.md](SPEC.md) is the full design (v0.7), [progress.md](progress.md) is the build log with every decision and deviation. If this README and SPEC.md disagree, SPEC.md wins; fix whichever is wrong.
 
 ---
 
@@ -93,43 +94,44 @@ All routes under `/api`, bound to `127.0.0.1`.
 | `POST /api/diagrams` | `{ url, ref? }` → `{ jobId }`, or `{ diagramId }` if repo+ref+commit already exists (checked with `git ls-remote`, no clone) |
 | `GET /api/jobs/{jobId}/events` | SSE: `stage {stage, message}`…, then `done {diagramId, …summary}` or `error {code, message}` |
 | `GET /api/diagrams` | History summaries, newest first |
-| `GET /api/diagrams/{id}` | Full record: both Mermaid texts, metadata, warnings |
-| `PUT /api/diagrams/{id}/edits/{format}` | Save edited text (`format` = `c4` \| `flowchart`); `DELETE` discards the edit |
+| `GET /api/diagrams/{id}` | Full record: texts at the default depth, depth range, model, metadata, warnings, which views have saved edits |
+| `GET /api/diagrams/{id}/views/{format}/{depth}` | One rendering (`format` = `c4` \| `flowchart`, `depth` 1…max): generated text, saved edit, boxes/edges/hubs drawn |
+| `PUT /api/diagrams/{id}/edits/{format}/{depth}` | Save edited text for that view; `DELETE` discards the edit. Both return the view |
 | `DELETE /api/diagrams/{id}` | Remove from history |
 | `GET /api/health` | Liveness + version |
 
-Every error, including unknown routes, has the shape `{ "error": { "code", "message" } }`. Codes: `INVALID_URL`, `REPO_NOT_FOUND`, `AUTH_REQUIRED`, `CLONE_FAILED`, `NOTHING_DETECTED`, `TIMEOUT`, `DIAGRAM_NOT_FOUND`, `JOB_NOT_FOUND`, `VALIDATION_ERROR`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `INTERNAL_ERROR`.
+Every error, including unknown routes, has the shape `{ "error": { "code", "message" } }`. Codes: `INVALID_URL`, `REPO_NOT_FOUND`, `AUTH_REQUIRED`, `CLONE_FAILED`, `NOTHING_DETECTED`, `TIMEOUT`, `DIAGRAM_NOT_FOUND`, `JOB_NOT_FOUND`, `VALIDATION_ERROR`, `INVALID_DEPTH`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `INTERNAL_ERROR`.
 
 ## Data model
 
-Pydantic `Model` = `system_name`, `containers[]` (each with `components[]`), `externals[]`, `relations[]`, `warnings[]`. Full field definitions: SPEC.md §7. The model is stored as JSON with each diagram and exposed through the API so later features (details panel) need no re-analysis.
+Pydantic `Model` = `system_name`, `containers[]` (each with a flat `components[]` that forms a tree through `parent`/`depth`), `externals[]`, `relations[]` (between the leaf components), `warnings[]`. Full field definitions: SPEC.md §7. The model is stored as JSON with each diagram and exposed through the API so later features (details panel) need no re-analysis.
 
-SQLite `diagrams` table (SPEC.md §5.3; file at `$DIAGRAMMA_DATA_DIR/diagramma.db`, default `~/.local/share/diagramma/`; `ref` is `''` when none, `repo_url` is lowercased): generated texts (`mermaid_c4`, `mermaid_flowchart`) are **never modified**; user edits live in `edited_c4` / `edited_flowchart` (NULL = none). `UNIQUE (repo_url, ref, commit_sha)`.
+SQLite (schema v2, migrated in place from v1; SPEC.md §5.3; file at `$DIAGRAMMA_DATA_DIR/diagramma.db`, default `~/.local/share/diagramma/`; `ref` is `''` when none, `repo_url` is lowercased): a `diagrams` table and an `edits` table keyed by (diagram, format, depth). Generated texts (`mermaid_c4`, `mermaid_flowchart`, rendered at the default depth) are **never modified**; other depths are rendered on demand from the stored model, and user edits live in `edits`. `UNIQUE (repo_url, ref, commit_sha)`.
 
 ## Detection rules (MVP summary)
 
 Heuristic and deterministic; every element records `evidence`. Details in SPEC.md §8.
 
 - **Containers:** docker-compose services → workspace packages / sub-folders with their own manifest → single container named after the repo. Kind from dependencies (web framework → `api`, React/Vue/… → `webapp`, bin → `cli`, no entrypoint → `library`).
-- **Components:** one per top-level feature folder under the source root (`src/`, `app/`, `lib/`, package dir), never per file; role from folder names; root-level files → "Core". Exclude tests, fixtures, mocks, docs, build output, generated code.
-- **Relations:** tree-sitter imports → file graph → component edges → container edges (+ compose `depends_on`). Parallel edges collapse; label from the role pair.
+- **Components:** a tree per container: folders nested up to 6 levels (pass-through folders merged), and for containers up to 300 source files, one component per file at the bottom. Roles from folder names (inherited by sub-folders and files); root-level files → "Core". Exclude tests, fixtures, mocks, docs, build output, generated code.
+- **Relations:** tree-sitter imports → file graph → edges between leaf components. Rendering rolls them up to the chosen depth (counts add up); labels come from the role pair.
 - **Externals / data stores:** built-in catalogue matched on dependencies, compose images and env var names.
-- **Readability:** cap of 60 components; smallest siblings merge into "Other <container>" with a warning.
+- **Readability:** top-level components are capped at 60 (smallest merge into "Other <container>"); the default depth is the deepest level that shows at most 60 boxes; the flowchart groups cross-group edges and marks hubs (SPEC §9.2).
 - Unsupported languages fall back to directory + manifest detection with a warning.
 
 ## Mermaid output
 
-Both dialects come from the same model and are stored: native `C4Component` (default) and a `flowchart` fallback. Requirements:
+Both dialects come from the same model: a `flowchart` (the default view: nested groups, role colours, edge thickness, hubs) and native `C4Component` (best at low depth). The default depth is stored; any other depth is rendered on demand. Requirements:
 
 - **Deterministic:** stable ordering, so the same commit + tool version yields byte-identical text.
-- IDs sanitised to `[A-Za-z0-9_]`, labels escaped, header comment with repo, ref, SHA, date, tool version.
+- IDs sanitised to `[A-Za-z0-9_]`, labels escaped, header comment with repo, ref, depth, SHA, commit date, tool version.
 - No `Person` elements.
 
 ## Frontend behaviour (key points)
 
 - Split: code 33% / diagram 67%, draggable divider, double-click resets (arrow keys also resize). Panes fold to a rail (code-only / diagram-only; Alt+1 / Alt+2); the last open pane can't fold. Layout persisted in `localStorage`. Stacks vertically below ~900 px.
 - Editor: live preview debounced ~400 ms; invalid text keeps the last good render and shows the error in a status bar. Save persists to history; Reset restores the generated text. Each format keeps its own edits.
-- The diagram pane header holds the C4/Flowchart toggle and the diagram has pan/zoom and Fit; it is always drawn on a light canvas; a failed C4 render offers the flowchart.
+- The diagram pane header holds the Flowchart/C4 toggle (Flowchart by default); a **Depth** control sits above the split. Each (format, depth) view has its own text, draft and saved edit. The diagram has pan/zoom and Fit; it is always drawn on a light canvas; a failed C4 render offers the flowchart.
 - Copy acts on the *current editor text*, including unsaved edits.
 - Re-generating a repo never silently overwrites saved edits.
 
@@ -170,6 +172,8 @@ npm run build                  # type-checks (tsc, strict) and builds to fronten
 
 ## Known limits
 
+- Very coupled codebases stay busy: at the default depth Django still draws ~130 edges (after grouping and hub handling). Pick a lower depth for an overview. Hub edges are not drawn in the flowchart (the C4 tab draws every edge), and there is no per-component details panel yet, so you cannot list exactly who depends on a hub.
+- Containers above 300 source files stop at folder level (no per-file components); components are limited to 6 levels.
 - Only TypeScript/JavaScript and Python are analysed in depth. Other languages get folders and manifests only, with a warning.
 - TS/JS imports resolve relative paths, `index` files, `.js`→`.ts`, and the `@/`, `~/`, `#/` aliases. `tsconfig` `paths`/`baseUrl` and package `exports` maps are not read.
 - Dynamic dependencies (DI, reflection, runtime URLs) are invisible. Frontend→backend HTTP calls are only drawn when docker-compose `depends_on` says so.

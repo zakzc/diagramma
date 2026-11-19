@@ -2,6 +2,10 @@
 
 One connection per operation (the API serves requests from a thread pool). The database file
 and schema are created lazily on first use, so importing the app never touches the disk.
+
+Schema versions: 1 = one saved edit per format on the diagram row; 2 = edits live in their own
+table keyed by (diagram, format, depth) and diagrams carry their depth range. Version 1
+databases are migrated in place.
 """
 
 import json
@@ -13,14 +17,9 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 
 from app.errors import AppError
-from app.models import DiagramRecord, DiagramSummary, Model
+from app.models import DiagramRecord, DiagramSummary, Model, SavedEdit
 
-DATA_DIR = Path(
-    os.environ.get("DIAGRAMMA_DATA_DIR", Path.home() / ".local" / "share" / "diagramma")
-)
-SCHEMA_VERSION = 1
-# Fixed column names, never user input.
-EDIT_COLUMNS = {"c4": "edited_c4", "flowchart": "edited_flowchart"}
+SCHEMA_VERSION = 2
 
 # `ref` is '' (not NULL) when no ref was given so that UNIQUE treats "no ref" as one value.
 SCHEMA = """
@@ -31,19 +30,27 @@ CREATE TABLE IF NOT EXISTS diagrams (
   name TEXT NOT NULL,
   ref TEXT NOT NULL DEFAULT '',
   commit_sha TEXT NOT NULL,
+  commit_date TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   container_count INTEGER NOT NULL,
   component_count INTEGER NOT NULL,
+  max_depth INTEGER NOT NULL DEFAULT 1,
+  auto_depth INTEGER NOT NULL DEFAULT 1,
   mermaid_c4 TEXT NOT NULL,
   mermaid_flowchart TEXT,
-  edited_c4 TEXT,
-  edited_flowchart TEXT,
   model_json TEXT NOT NULL,
   warnings_json TEXT NOT NULL,
   tool_version TEXT NOT NULL,
   UNIQUE (repo_url, ref, commit_sha)
 );
 CREATE INDEX IF NOT EXISTS diagrams_created ON diagrams (created_at DESC);
+CREATE TABLE IF NOT EXISTS edits (
+  diagram_id TEXT NOT NULL REFERENCES diagrams(id) ON DELETE CASCADE,
+  format TEXT NOT NULL CHECK (format IN ('c4', 'flowchart')),
+  depth INTEGER NOT NULL,
+  text TEXT NOT NULL,
+  PRIMARY KEY (diagram_id, format, depth)
+);
 """
 
 SUMMARY_COLS = (
@@ -55,6 +62,25 @@ SUMMARY_COLS = (
 def _key(repo_url: str, ref: str | None) -> tuple[str, str]:
     # GitHub owner/repo names are case-insensitive: one identity per repo.
     return repo_url.lower(), ref or ""
+
+
+def _migrate_v1(con: sqlite3.Connection) -> None:
+    """v1 -> v2: move the per-format edits into the edits table (they were flat, depth 1)."""
+    for col, ddl in (
+        ("commit_date", "TEXT NOT NULL DEFAULT ''"),
+        ("max_depth", "INTEGER NOT NULL DEFAULT 1"),
+        ("auto_depth", "INTEGER NOT NULL DEFAULT 1"),
+    ):
+        con.execute(f"ALTER TABLE diagrams ADD COLUMN {col} {ddl}")
+    con.executescript(SCHEMA)  # creates the edits table
+    for fmt, col in (("c4", "edited_c4"), ("flowchart", "edited_flowchart")):
+        con.execute(
+            "INSERT OR REPLACE INTO edits (diagram_id, format, depth, text) "
+            f"SELECT id, ?, 1, {col} FROM diagrams WHERE {col} IS NOT NULL",
+            (fmt,),
+        )
+        with suppress(sqlite3.OperationalError):  # DROP COLUMN needs SQLite >= 3.35
+            con.execute(f"ALTER TABLE diagrams DROP COLUMN {col}")
 
 
 class DiagramStore:
@@ -76,11 +102,20 @@ class DiagramStore:
         con = sqlite3.connect(self._path, timeout=10)
         con.row_factory = sqlite3.Row
         try:
+            con.execute("PRAGMA foreign_keys = ON")
             if not self._ready:
                 with suppress(sqlite3.OperationalError):  # WAL needs a writable, local file
                     con.execute("PRAGMA journal_mode=WAL")
-                con.executescript(SCHEMA)
-                con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+                version = con.execute("PRAGMA user_version").fetchone()[0]
+                has_table = con.execute(
+                    "SELECT 1 FROM sqlite_master WHERE name = 'diagrams'"
+                ).fetchone()
+                with con:
+                    if has_table and version < 2:
+                        _migrate_v1(con)
+                    else:
+                        con.executescript(SCHEMA)
+                    con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
                 self._ready = True
             with con:  # commit or roll back
                 yield con
@@ -89,8 +124,11 @@ class DiagramStore:
 
     # -- mapping ----------------------------------------------------------------------------
 
-    @staticmethod
-    def _record(row: sqlite3.Row) -> DiagramRecord:
+    def _record(self, con: sqlite3.Connection, row: sqlite3.Row) -> DiagramRecord:
+        edits = con.execute(
+            "SELECT format, depth FROM edits WHERE diagram_id = ? ORDER BY format, depth",
+            (row["id"],),
+        ).fetchall()
         return DiagramRecord(
             id=row["id"],
             repo_url=row["repo_url"],
@@ -98,13 +136,15 @@ class DiagramStore:
             name=row["name"],
             ref=row["ref"] or None,
             commit_sha=row["commit_sha"],
+            commit_date=row["commit_date"],
             created_at=row["created_at"],
             container_count=row["container_count"],
             component_count=row["component_count"],
+            max_depth=row["max_depth"],
+            auto_depth=row["auto_depth"],
             mermaid_c4=row["mermaid_c4"],
             mermaid_flowchart=row["mermaid_flowchart"],
-            edited_c4=row["edited_c4"],
-            edited_flowchart=row["edited_flowchart"],
+            saved_edits=[SavedEdit(format=e["format"], depth=e["depth"]) for e in edits],
             model=Model.model_validate_json(row["model_json"]),
             warnings=json.loads(row["warnings_json"]),
             tool_version=row["tool_version"],
@@ -115,9 +155,9 @@ class DiagramStore:
     def get(self, diagram_id: str) -> DiagramRecord:
         with self._conn() as con:
             row = con.execute("SELECT * FROM diagrams WHERE id = ?", (diagram_id,)).fetchone()
-        if row is None:
-            raise AppError("DIAGRAM_NOT_FOUND", "Diagram not found.")
-        return self._record(row)
+            if row is None:
+                raise AppError("DIAGRAM_NOT_FOUND", "Diagram not found.")
+            return self._record(con, row)
 
     def find(self, repo_url: str, ref: str | None, commit_sha: str) -> DiagramRecord | None:
         url, r = _key(repo_url, ref)
@@ -126,7 +166,7 @@ class DiagramStore:
                 "SELECT * FROM diagrams WHERE repo_url = ? AND ref = ? AND commit_sha = ?",
                 (url, r, commit_sha),
             ).fetchone()
-        return self._record(row) if row else None
+            return self._record(con, row) if row else None
 
     def has_repo(self, repo_url: str, ref: str | None) -> bool:
         url, r = _key(repo_url, ref)
@@ -142,6 +182,14 @@ class DiagramStore:
                 f"SELECT {SUMMARY_COLS} FROM diagrams ORDER BY created_at DESC, id"
             ).fetchall()
         return [DiagramSummary(**{**dict(r), "ref": r["ref"] or None}) for r in rows]
+
+    def get_edit(self, diagram_id: str, fmt: str, depth: int) -> str | None:
+        with self._conn() as con:
+            row = con.execute(
+                "SELECT text FROM edits WHERE diagram_id = ? AND format = ? AND depth = ?",
+                (diagram_id, fmt, depth),
+            ).fetchone()
+        return row["text"] if row else None
 
     # -- writes -----------------------------------------------------------------------------
 
@@ -159,6 +207,9 @@ class DiagramStore:
             json.dumps(record.warnings),
             record.container_count,
             record.component_count,
+            record.max_depth,
+            record.auto_depth,
+            record.commit_date,
             record.tool_version,
             record.created_at,
         )
@@ -172,8 +223,8 @@ class DiagramStore:
                 if row["tool_version"] != record.tool_version:
                     con.execute(
                         "UPDATE diagrams SET mermaid_c4=?, mermaid_flowchart=?, model_json=?, "
-                        "warnings_json=?, container_count=?, component_count=?, tool_version=?, "
-                        "created_at=? WHERE id=?",
+                        "warnings_json=?, container_count=?, component_count=?, max_depth=?, "
+                        "auto_depth=?, commit_date=?, tool_version=?, created_at=? WHERE id=?",
                         (*generated, row["id"]),
                     )
                 diagram_id = row["id"]
@@ -182,8 +233,8 @@ class DiagramStore:
                 con.execute(
                     "INSERT INTO diagrams (id, repo_url, owner, name, ref, commit_sha, "
                     "mermaid_c4, mermaid_flowchart, model_json, warnings_json, container_count, "
-                    "component_count, tool_version, created_at) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "component_count, max_depth, auto_depth, commit_date, tool_version, "
+                    "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
                         diagram_id,
                         url,
@@ -196,22 +247,21 @@ class DiagramStore:
                 )
         return self.get(diagram_id)
 
-    def set_edit(self, diagram_id: str, fmt: str, text: str | None) -> DiagramRecord:
-        """Save (or with None, discard) the user's edited Mermaid text for one format.
-
-        Text identical to the generated output is not an edit, so it is stored as none.
-        """
-        if fmt not in EDIT_COLUMNS:
-            raise ValueError(f"unknown format {fmt!r}")
-        record = self.get(diagram_id)
-        generated = record.mermaid_c4 if fmt == "c4" else record.mermaid_flowchart
-        if text == generated:
-            text = None
+    def set_edit(self, diagram_id: str, fmt: str, depth: int, text: str | None) -> None:
+        """Save (or with None, discard) the user's edited text for one format at one depth."""
+        self.get(diagram_id)  # raises DIAGRAM_NOT_FOUND
         with self._conn() as con:
-            con.execute(
-                f"UPDATE diagrams SET {EDIT_COLUMNS[fmt]} = ? WHERE id = ?", (text, diagram_id)
-            )
-        return self.get(diagram_id)
+            if text is None:
+                con.execute(
+                    "DELETE FROM edits WHERE diagram_id = ? AND format = ? AND depth = ?",
+                    (diagram_id, fmt, depth),
+                )
+            else:
+                con.execute(
+                    "INSERT OR REPLACE INTO edits (diagram_id, format, depth, text) "
+                    "VALUES (?, ?, ?, ?)",
+                    (diagram_id, fmt, depth, text),
+                )
 
     def delete(self, diagram_id: str) -> None:
         with self._conn() as con:

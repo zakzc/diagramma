@@ -59,9 +59,22 @@ export async function deleteDiagram(id: string): Promise<void> {
 }
 
 export type EditFormat = "c4" | "flowchart";
+export type DiagramView = components["schemas"]["DiagramView"];
 
-export async function saveEdit(id: string, format: EditFormat, text: string): Promise<DiagramRecord> {
-  const r = await fetch(`/api/diagrams/${id}/edits/${format}`, {
+/** The diagram as `format` rolled up to `depth`, plus the saved edit for that exact view. */
+export async function getView(id: string, format: EditFormat, depth: number): Promise<DiagramView> {
+  const r = await fetch(`/api/diagrams/${id}/views/${format}/${depth}`);
+  if (!r.ok) throw await failure(r);
+  return r.json();
+}
+
+export async function saveEdit(
+  id: string,
+  format: EditFormat,
+  depth: number,
+  text: string,
+): Promise<DiagramView> {
+  const r = await fetch(`/api/diagrams/${id}/edits/${format}/${depth}`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ text }),
@@ -70,8 +83,8 @@ export async function saveEdit(id: string, format: EditFormat, text: string): Pr
   return r.json();
 }
 
-export async function discardEdit(id: string, format: EditFormat): Promise<DiagramRecord> {
-  const r = await fetch(`/api/diagrams/${id}/edits/${format}`, { method: "DELETE" });
+export async function discardEdit(id: string, format: EditFormat, depth: number): Promise<DiagramView> {
+  const r = await fetch(`/api/diagrams/${id}/edits/${format}/${depth}`, { method: "DELETE" });
   if (!r.ok) throw await failure(r);
   return r.json();
 }

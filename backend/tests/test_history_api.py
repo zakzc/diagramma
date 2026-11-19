@@ -134,52 +134,69 @@ def test_resolve_commit_variants(remote):
     assert resolve_commit(RepoSpec("owner", "missing"), base) is None
 
 
-def test_edit_save_discard_and_isolation(remote, tmp_path, monkeypatch):
+def test_views_and_depth_scoped_edits(remote, tmp_path, monkeypatch):
     patch_remote(monkeypatch, remote, tmp_path)
     with make_client(tmp_path) as c:
         did, _ = generate(c)
-        gen = c.get(f"/api/diagrams/{did}").json()
-        assert gen["edited_c4"] is None and gen["edited_flowchart"] is None
+        rec = c.get(f"/api/diagrams/{did}").json()
+        assert rec["max_depth"] >= 1 and 1 <= rec["auto_depth"] <= rec["max_depth"]
+        assert rec["saved_edits"] == []
+        depth = rec["auto_depth"]
 
-        r = c.put(f"/api/diagrams/{did}/edits/c4", json={"text": "C4Component\n  title mine\n"})
-        assert r.status_code == 200
-        assert r.json()["edited_c4"] == "C4Component\n  title mine\n"
-        assert r.json()["edited_flowchart"] is None  # each format keeps its own edit
-        assert r.json()["mermaid_c4"] == gen["mermaid_c4"]  # generated text is never modified
+        v = c.get(f"/api/diagrams/{did}/views/c4/{depth}").json()
+        assert v["generated"] == rec["mermaid_c4"]  # the stored text is the auto-depth view
+        assert v["edited"] is None and v["nodes"] >= 1 and v["edges"] >= 0
+        assert v["hubs"] == 0  # a tiny repo has no shared modules to collapse
+        flow = c.get(f"/api/diagrams/{did}/views/flowchart/{depth}").json()
+        assert flow["generated"] == rec["mermaid_flowchart"] and flow["generated"].startswith(
+            "flowchart"
+        )
 
-        again = c.get(f"/api/diagrams/{did}").json()  # persisted, not just echoed
-        assert again["edited_c4"] == "C4Component\n  title mine\n"
+        r = c.put(
+            f"/api/diagrams/{did}/edits/c4/{depth}", json={"text": "C4Component\n title mine\n"}
+        )
+        assert r.status_code == 200 and r.json()["edited"] == "C4Component\n title mine\n"
+        assert r.json()["generated"] == v["generated"]  # the generated text is never modified
+        # an edit belongs to one (format, depth) only
+        assert c.get(f"/api/diagrams/{did}/views/flowchart/{depth}").json()["edited"] is None
+        assert c.get(f"/api/diagrams/{did}").json()["saved_edits"] == [
+            {"format": "c4", "depth": depth}
+        ]
 
-        r = c.put(f"/api/diagrams/{did}/edits/flowchart", json={"text": "flowchart TD\n a-->b\n"})
-        assert r.json()["edited_flowchart"] == "flowchart TD\n a-->b\n"
-
-        assert c.delete(f"/api/diagrams/{did}/edits/c4").json()["edited_c4"] is None
-        assert c.get(f"/api/diagrams/{did}").json()["edited_flowchart"] is not None
+        r = c.delete(f"/api/diagrams/{did}/edits/c4/{depth}")
+        assert (
+            r.json()["edited"] is None and c.get(f"/api/diagrams/{did}").json()["saved_edits"] == []
+        )
 
 
 def test_saving_the_generated_text_is_not_an_edit(remote, tmp_path, monkeypatch):
     patch_remote(monkeypatch, remote, tmp_path)
     with make_client(tmp_path) as c:
         did, _ = generate(c)
-        gen = c.get(f"/api/diagrams/{did}").json()["mermaid_c4"]
-        c.put(f"/api/diagrams/{did}/edits/c4", json={"text": "x"})
-        assert (
-            c.put(f"/api/diagrams/{did}/edits/c4", json={"text": gen}).json()["edited_c4"] is None
-        )
+        gen = c.get(f"/api/diagrams/{did}/views/c4/1").json()["generated"]
+        c.put(f"/api/diagrams/{did}/edits/c4/1", json={"text": "x"})
+        assert c.put(f"/api/diagrams/{did}/edits/c4/1", json={"text": gen}).json()["edited"] is None
 
 
-def test_edit_errors(remote, tmp_path, monkeypatch):
+def test_view_and_edit_errors(remote, tmp_path, monkeypatch):
     patch_remote(monkeypatch, remote, tmp_path)
     with make_client(tmp_path) as c:
         did, _ = generate(c)
-        assert (
-            c.put("/api/diagrams/nope/edits/c4", json={"text": "x"}).json()["error"]["code"]
-            == "DIAGRAM_NOT_FOUND"
-        )
-        assert c.delete("/api/diagrams/nope/edits/c4").status_code == 404
-        assert c.put(f"/api/diagrams/{did}/edits/svg", json={"text": "x"}).status_code == 422
-        too_big = c.put(f"/api/diagrams/{did}/edits/c4", json={"text": "x" * 2_000_001})
-        assert too_big.status_code == 422 and too_big.json()["error"]["code"] == "VALIDATION_ERROR"
+        top = c.get(f"/api/diagrams/{did}").json()["max_depth"]
+        for depth in (0, top + 1, -3):
+            r = c.get(f"/api/diagrams/{did}/views/c4/{depth}")
+            assert r.status_code == 422, depth
+            assert r.json()["error"]["code"] in {"INVALID_DEPTH", "VALIDATION_ERROR"}
+        bad = c.put(f"/api/diagrams/{did}/edits/c4/{top + 1}", json={"text": "x"})
+        assert bad.json()["error"]["code"] == "INVALID_DEPTH"
+        assert c.delete(f"/api/diagrams/{did}/edits/c4/{top + 1}").status_code == 422
+        assert c.get("/api/diagrams/nope/views/c4/1").json()["error"]["code"] == "DIAGRAM_NOT_FOUND"
+        assert c.put("/api/diagrams/nope/edits/c4/1", json={"text": "x"}).status_code == 404
+        assert c.delete("/api/diagrams/nope/edits/c4/1").status_code == 404
+        assert c.get(f"/api/diagrams/{did}/views/svg/1").status_code == 422
+        assert c.get(f"/api/diagrams/{did}/views/c4/one").status_code == 422
+        big = c.put(f"/api/diagrams/{did}/edits/c4/1", json={"text": "x" * 2_000_001})
+        assert big.status_code == 422 and big.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
 def test_saved_edit_survives_restart_and_regeneration(remote, tmp_path, monkeypatch):
@@ -188,13 +205,26 @@ def test_saved_edit_survives_restart_and_regeneration(remote, tmp_path, monkeypa
     patch_remote(monkeypatch, remote, tmp_path)
     with make_client(tmp_path) as c:
         did, _ = generate(c)
-        c.put(f"/api/diagrams/{did}/edits/c4", json={"text": "my fix"})
+        c.put(f"/api/diagrams/{did}/edits/c4/1", json={"text": "my fix"})
     with sqlite3.connect(tmp_path / "h.db") as con:
         con.execute("UPDATE diagrams SET tool_version = '0.0.1'")
     with make_client(tmp_path) as c2:  # restart, then re-generate with a newer tool version
-        assert c2.get(f"/api/diagrams/{did}").json()["edited_c4"] == "my fix"
+        assert c2.get(f"/api/diagrams/{did}/views/c4/1").json()["edited"] == "my fix"
         again, events = generate(c2)
         assert again == did and events is not None
         rec = c2.get(f"/api/diagrams/{did}").json()
-        assert rec["edited_c4"] == "my fix" and rec["tool_version"] == __version__
-        assert rec["mermaid_c4"] != "my fix"  # the original generated text is kept alongside
+        assert rec["tool_version"] == __version__
+        view = c2.get(f"/api/diagrams/{did}/views/c4/1").json()
+        assert view["edited"] == "my fix" and view["generated"] != "my fix"  # kept alongside
+
+
+def test_deleting_a_diagram_removes_its_edits(remote, tmp_path, monkeypatch):
+    import sqlite3
+
+    patch_remote(monkeypatch, remote, tmp_path)
+    with make_client(tmp_path) as c:
+        did, _ = generate(c)
+        c.put(f"/api/diagrams/{did}/edits/c4/1", json={"text": "x"})
+        c.delete(f"/api/diagrams/{did}")
+    with sqlite3.connect(tmp_path / "h.db") as con:
+        assert con.execute("SELECT count(*) FROM edits").fetchone()[0] == 0

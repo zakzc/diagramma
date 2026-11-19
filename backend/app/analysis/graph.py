@@ -70,7 +70,15 @@ def _py_module_index(detected: list[Detected]) -> dict[str, str]:
 
 
 def _resolve_py(imp: ImportRef, src: str, index: dict[str, str], all_files: set[str]) -> list[str]:
-    out: list[str] = []
+    """Files an import statement depends on.
+
+    `from pkg import a, b` depends on the submodules `a` and `b` when they are modules; the
+    package's own `__init__` only counts if some imported name is not a submodule (a class or
+    function defined or re-exported there). One statement is one dependency, not two.
+    """
+    module_file: str | None = None
+    subs: list[str] = []
+    all_subs = bool(imp.names)
     if imp.level:
         pkg = posixpath.dirname(src)
         for _ in range(imp.level - 1):
@@ -80,22 +88,26 @@ def _resolve_py(imp: ImportRef, src: str, index: dict[str, str], all_files: set[
             if imp.module
             else pkg
         )
-        for cand in (f"{base}.py", f"{base}/__init__.py"):
-            if cand in all_files:
-                out.append(cand)
-                break
+        module_file = next(
+            (c for c in (f"{base}.py", f"{base}/__init__.py") if c in all_files), None
+        )
         for n in imp.names:
-            for cand in (f"{base}/{n}.py", f"{base}/{n}/__init__.py"):
-                if cand in all_files:
-                    out.append(cand)
-                    break
-        return out
-    if imp.module in index:
-        out.append(index[imp.module])
-    for n in imp.names:
-        if (sub := f"{imp.module}.{n}") in index:
-            out.append(index[sub])
-    return out
+            hit = next(
+                (c for c in (f"{base}/{n}.py", f"{base}/{n}/__init__.py") if c in all_files), None
+            )
+            if hit:
+                subs.append(hit)
+            else:
+                all_subs = False
+    else:
+        module_file = index.get(imp.module)
+        for n in imp.names:
+            if (sub := f"{imp.module}.{n}") in index:
+                subs.append(index[sub])
+            else:
+                all_subs = False
+    out = subs if (all_subs and subs) else ([module_file] if module_file else []) + subs
+    return list(dict.fromkeys(out))
 
 
 def build_graph(

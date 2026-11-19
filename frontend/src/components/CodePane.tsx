@@ -5,7 +5,15 @@ import { useSystemDark } from "../hooks/useMediaQuery";
 
 const extensions = [mermaid(), EditorView.lineWrapping];
 
-export default function CodePane({ value, onChange }: { value: string; onChange: (text: string) => void }) {
+export default function CodePane({
+  value,
+  onChange,
+  readOnly = false,
+}: {
+  value: string;
+  onChange: (text: string) => void;
+  readOnly?: boolean;
+}) {
   const dark = useSystemDark();
   return (
     <div className="h-full overflow-auto text-sm" aria-label="Mermaid code editor">
@@ -13,6 +21,8 @@ export default function CodePane({ value, onChange }: { value: string; onChange:
         value={value}
         onChange={onChange}
         theme={dark ? "dark" : "light"}
+        readOnly={readOnly}
+        editable={!readOnly}
         extensions={extensions}
         basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: false }}
         minHeight="100%"

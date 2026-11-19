@@ -19,8 +19,14 @@ class Component(Base):
     technology: str | None = None
     paths: list[str] = Field(default_factory=list)
     description: str | None = None
-    weight: int = 0  # file count / LOC
+    weight: int = 0  # lines of code (a group: the sum of its descendants)
     evidence: list[str] = Field(default_factory=list)
+    # Components form a tree per container: groups contain folders/files; relations are drawn
+    # between the leaves and rolled up to a chosen depth when rendering.
+    parent: str | None = None
+    depth: int = 1  # 1 = directly under the container
+    kind: Literal["group", "folder", "file"] = "folder"
+    file_count: int = 0  # source files in this component's subtree
 
 
 class Container(Base):
@@ -84,6 +90,13 @@ class DiagramCreated(BaseModel):
     diagramId: str | None = None
 
 
+class SavedEdit(Base):
+    """Which views the user has saved an edit for (the text comes from the view endpoint)."""
+
+    format: Literal["c4", "flowchart"]
+    depth: int
+
+
 class DiagramRecord(Base):
     """A generated diagram as stored in SQLite."""
 
@@ -98,8 +111,10 @@ class DiagramRecord(Base):
     component_count: int
     mermaid_c4: str
     mermaid_flowchart: str | None = None
-    edited_c4: str | None = None  # user's saved edit (milestone 6); None = no edit
-    edited_flowchart: str | None = None
+    commit_date: str = ""
+    max_depth: int = 1  # deepest component level in the model
+    auto_depth: int = 1  # depth the stored texts above were rendered at
+    saved_edits: list["SavedEdit"] = Field(default_factory=list)
     model: Model
     warnings: list[str] = Field(default_factory=list)
     tool_version: str
@@ -125,3 +140,15 @@ MAX_EDIT_CHARS = 2_000_000
 
 class EditBody(BaseModel):
     text: str = Field(max_length=MAX_EDIT_CHARS)
+
+
+class DiagramView(Base):
+    """One rendering of a diagram: a format at a depth, plus the user's saved edit if any."""
+
+    format: Literal["c4", "flowchart"]
+    depth: int
+    generated: str
+    edited: str | None = None
+    nodes: int  # components visible at this depth
+    edges: int  # relations drawn at this depth
+    hubs: int = 0  # shared components drawn once instead of with all their incoming edges
