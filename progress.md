@@ -6,7 +6,7 @@ Milestones are named **M1, M2, …** (as in SPEC §11).
 
 **Legend:** `[ ]` todo · `[~]` in progress · `[x]` done · `[-]` dropped (add a reason)
 
-**Current milestone:** M8 (Dependency graph view) is **specified (SPEC §9.3) but not started**. M7 (deeper components, clearer view) is done on branch `deeper-components`, committed locally and not yet pushed. M1-M6 are in PR #1. Roadmap (SPEC §12) otherwise not started.
+**Current milestone:** none open. M7 (deeper components) and M8 (Dependency graph view, simpler form) are built on branch `deeper-components`; M7 is committed locally, M8 is ready to commit; neither is pushed. M1-M6 are in PR #1. Roadmap (SPEC §12) otherwise not started.
 **Last updated:** 2026-11-19
 
 ---
@@ -84,18 +84,20 @@ Requested after the MVP: components were only one level deep and dense diagrams 
 - [x] Verified in a real browser on fastapi template, flask, typer and Django (all depths, edits scoped per depth across a reload)
 
 ## M8 — Dependency graph view (layered)
-Specified in SPEC §9.3 (v0.8). **Planned, not started.** A layered graph built from import statements: foundations at the bottom, entry points on top, cycles reported instead of hidden. Order below is the suggested build order.
-- [ ] Relation provenance: an `evidence` set on every relation (`import`, `compose`, `manifest`, `env`), unioned through the depth roll-up, grouping and the top-level cap merge; model, goldens and tests updated (no behaviour change for existing views)
-- [ ] `analysis/layering.py` (pure functions): import-only graph at a depth (boxes plus externals that an import references)
-- [ ] Cycle breaking with the weighted Eades-Lin-Smyth ordering; upward edges reported, large cycles never collapsed
-- [ ] Layering by longest path over forward edges; externals in layer 0
-- [ ] Transitive reduction, long-edge omission (`MAX_SPAN` = 3, tune on the reference repos), hub marking after reduction, all with counts
-- [ ] Property tests: forward edges strictly decrease the layer; the forward set is acyclic; reduction preserves reachability; deterministic under input reordering; compose-only edges never appear
-- [ ] `render/layers.py`: layer subgraphs with invisible ordering links, container colours, "↑N" badges and dashed border for nodes with upward edges, cylinders for externals; golden files and a parse test with the pinned Mermaid
-- [ ] API: `layers` format in `GET …/views/…` and in the edits endpoints, a `layers` summary object (layer sizes, edges drawn / transitive omitted / long omitted, upward edges and the 10 strongest, longest chain); schema v3 (edits `format` check widened) with an in-place migration test
-- [ ] UI: a "Dependencies" tab, summary strip, list of the strongest upward dependencies; hook and workspace tests (per-view drafts and edits for `layers`)
-- [ ] Verify in a real browser on the FastAPI template, Flask, Typer and Django; check a second Mermaid version; Django default-depth view computed in under 1 s
-- [ ] Tune `MAX_SPAN` and the summary wording on those repos; update README (features, known limits) and SPEC if anything changed
+Specified in SPEC §9.3. **Built in a simpler form** (plain top-down layout; see the `[-]` items for what was deferred). A layered graph built from import statements: foundations at the bottom, entry points on top, cycles reported instead of hidden.
+- [x] Relation provenance: an `evidence` set on every relation (`import`, `compose`, `manifest`, `env`), unioned through the depth roll-up, grouping and the top-level cap merge (no change for existing views)
+- [x] `analysis/layering.py` (pure functions): import-only graph at a depth (boxes plus externals that an import references); isolated components counted, not drawn
+- [x] Cycle breaking with the weighted Eades-Lin-Smyth ordering; upward edges reported, large cycles never collapsed
+- [x] Layering by longest path over forward edges; externals in layer 0
+- [x] Transitive reduction and long-edge omission (`MAX_SPAN` = 3, kept after checking four repos), all counted
+- [x] Property tests on 25 random graphs plus targeted cases: forward edges strictly decrease the layer, no edge lost or double counted, reduction preserves reachability, deterministic under input shuffling
+- [x] `render/layers.py`: plain top-down `flowchart TB`, layer number and colour per layer, container name when there are several, `×N`/thickness, cylinders for externals, red dashed "↑N" boxes; golden files and a parse test with the pinned Mermaid
+- [x] API: `layers` in the views and edits endpoints with a `layers` summary; `409 LAYERS_UNAVAILABLE` for diagrams from before provenance; schema v3 and an in-place v2→v3 migration (tested, and checked on a real database)
+- [x] UI: a "Dependencies" tab, summary strip with what was left out, list of the strongest upward dependencies; a view that fails to load keeps the previous one on screen read-only; workspace tests
+- [x] Verified in a real browser on the FastAPI template, Flask, Django (and the upgrade of an old diagram); exported texts render in Mermaid 11.17.2; Django default view computed in 20 ms
+- [-] Layer bands (a subgraph per layer, "Layer N" titles): deferred, draws much taller (Django depth 1 about 3,500px). Plain ranking plus layer numbers and colours does the job
+- [-] Hub marking in this view: deferred, the reduction already removes most hub edges in the prototype
+- [-] Per-container filtering and a toggle to draw upward edges: deferred (SPEC §12)
 
 ## Cross-cutting
 - [x] Unified error shape `{ "error": { code, message } }`
@@ -104,7 +106,7 @@ Specified in SPEC §9.3 (v0.8). **Planned, not started.** A layered graph built 
 - [x] Frontend Vitest/RTL tests (split layout, editor, history)
 - [x] README dev commands verified against reality
 
-## Acceptance (SPEC §11)  (1-10 met; 11-14 belong to M8)
+## Acceptance (SPEC §11)  (all met)
 - [x] 1. URL → progress → rendered whole-app diagram
 - [x] 2. Containers as boundaries with components; distinct DB/external symbols; cross-container relations; no persons
 - [x] 3. Copied `.mmd` text renders in an external Mermaid viewer (checked with Mermaid 11.17.2 in a bare page, not a hosted viewer; the app pins 12.3.0)
@@ -118,10 +120,10 @@ Specified in SPEC §9.3 (v0.8). **Planned, not started.** A layered graph built 
 - [x] 8. Unsupported-language repo yields coarser valid diagram + warning
 - [x] 9. (M7) Components nest; Depth control; default depth draws at most 60 boxes; edits are per (format, depth) and survive a reload without leaking
 - [x] 10. (M7) Dense code stays readable: grouped edges, hubs drawn once with "used by N", header says how many
-- [ ] 11. (M8) Dependencies tab shows a layered graph: layer numbers, every drawn forward edge goes from a higher to a lower layer, externals in layer 0
-- [ ] 12. (M8) Cyclic code still layers (Flask, Django): large cycles are never collapsed; the upward-edge count and the 10 strongest are shown
-- [ ] 13. (M8) Only import-derived edges are used; compose/manifest/env-only edges never appear
-- [ ] 14. (M8) Readable and honest by default: no drawn forward edge spans more than `MAX_SPAN` layers; the summary states what was omitted; deterministic; parses in two Mermaid versions; Django default view computed in under 1 s
+- [x] 11. (M8) Dependencies tab shows a layered graph: layer numbers, every drawn forward edge goes from a higher to a lower layer, externals in layer 0
+- [x] 12. (M8) Cyclic code still layers (Flask, Django): large cycles are never collapsed; the upward-edge count and the 10 strongest are shown
+- [x] 13. (M8) Only import-derived edges are used; compose/manifest/env-only edges never appear
+- [x] 14. (M8) Readable and honest by default: no drawn forward edge spans more than `MAX_SPAN` layers; the summary states what was omitted; deterministic; parses in two Mermaid versions; Django default view computed in under 1 s
 
 ---
 
@@ -129,6 +131,7 @@ Specified in SPEC §9.3 (v0.8). **Planned, not started.** A layered graph built 
 
 | Date | Note |
 |---|---|
+| 2026-11-19 | M8 built (simpler form): provenance, layering, Dependencies tab, schema v3. 215 backend and 80 frontend tests pass. Verified in a real browser (FastAPI template, Flask, Django, upgrade of an old diagram), in Mermaid 11.17.2, Django view in 20 ms. |
 | 2026-11-19 | Docs: milestones renamed M1…M7; **M8 (Dependency graph view) specified** in SPEC v0.8 (§9.3, API, model, acceptance 11-14, risks) and planned here with a build-order checklist. Design checked with a throwaway prototype on four real repos (not committed). No code changed. |
 | 2026-11-19 | M7 (branch `deeper-components`): nested components, depth control, grouped edges, hubs, per-depth edits, schema v2 with migration. 152 backend and 71 frontend tests pass; verified in a real browser on four repos. |
 | 2026-11-19 | Final pass: error envelope everywhere, CORS and loopback-bind tests, `python -m app`, README commands verified clean, README/SPEC corrected, acceptance 3 checked with a second Mermaid version, 24 extra backend tests. 102 backend and 59 frontend tests pass. |
@@ -141,6 +144,12 @@ Specified in SPEC §9.3 (v0.8). **Planned, not started.** A layered graph built 
 | 2026-11-19 | SPEC v0.4 written; README and progress tracker added. No code yet. |
 
 ## Decisions & open questions
+
+- M8 (built): **simpler approach.** Plain top-down `flowchart TB`, layer number and colour on each box. Not built: layer bands, hub marking, drawing upward edges, per-container filtering (roadmap). Real results match the prototype: Django at package level 10 layers and 34 upward edges (114 edges become 19 drawn), Flask 14 layers and 25 upward, FastAPI template 10 layers and no cycles (125 become 57).
+- M8: the strip tells the user what was left out (implied edges, edges longer than 3 layers, isolated components, upward edges) so nothing is silently dropped. The strongest upward dependencies are the most useful output on cyclic code (Django: `Core → DB ×66`, `Utils → Core ×15`).
+- M8: diagrams generated by earlier versions have no relation provenance. Their Dependencies tab answers `409 LAYERS_UNAVAILABLE`: "Submit the repository again". Re-submitting regenerates them (tool version 0.3.0) under the same history entry, keeping saved edits. Other views of old diagrams keep working.
+- M8: schema v3 removes the SQL `CHECK` on `edits.format` (the API validates the format). A v1 database from the first release was migrated in place on a real machine (integrity check ok, all diagrams kept), and v2 to v3 is covered by a test.
+- M8: found by a test and fixed: when a view failed to load the editor stayed editable and showed another view's text. A failed view now leaves the previous one on screen read-only and the tabs usable (`useDiagramEditor` tracks `stale` separately from `loading`).
 
 - M8 (planning, prototype on real data, nothing in the repo): **cycles are broken by ordering, not collapsed.** Django at package level is a single strongly connected component of 15 of 19 packages, so collapsing would erase its structure. A weighted greedy order gives 10 layers and 34 upward edges of 114.
 - M8: **transitive reduction is what makes it readable.** Forward edges after cycle breaking and reduction: FastAPI template (depth 2) 125 to 74, Flask (depth 2) 91 to 45, Django (depth 1) 80 to 22. FastAPI at depth 3 stays high (320 to 236), which is why long edges are also omitted.

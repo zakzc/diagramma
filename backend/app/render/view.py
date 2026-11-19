@@ -71,6 +71,7 @@ class View:
                 if cur.label != r.label:
                     cur.label = "Uses"
                 cur.technology = cur.technology or r.technology
+                cur.evidence = sorted({*cur.evidence, *r.evidence})  # type: ignore[misc]
         return sorted(acc.values(), key=lambda r: (r.source, r.target))
 
     @property
@@ -142,6 +143,7 @@ def build_view(model: Model, depth: int) -> View:
             if cur_rel.label != r.label:
                 cur_rel.label = "Uses"
             cur_rel.technology = cur_rel.technology or r.technology
+            cur_rel.evidence = sorted({*cur_rel.evidence, *r.evidence})  # type: ignore[misc]
     relations = sorted(acc.values(), key=lambda r: (r.source, r.target))
     return View(depth, containers, relations)
 

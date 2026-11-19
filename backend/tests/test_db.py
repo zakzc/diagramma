@@ -44,7 +44,7 @@ def test_schema_matches_spec(tmp_path):
         "depth",
         "text",
     }
-    assert con.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert con.execute("PRAGMA user_version").fetchone()[0] == 3
 
 
 def test_same_repo_ref_commit_reuses_entry_case_insensitively(tmp_path):
@@ -142,7 +142,7 @@ def test_v1_database_is_migrated_in_place(tmp_path):
     assert s.get_edit("d1", "c4", 1) == "my c4 edit"  # moved to the edits table at depth 1
     assert s.get_edit("d1", "flowchart", 1) is None
     check = sqlite3.connect(path)
-    assert check.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert check.execute("PRAGMA user_version").fetchone()[0] == 3
     # a regeneration by the new release then works on the migrated table
     s.add(rec(repo_url="https://github.com/o/old", owner="o", name="old", commit_sha="a1",
               tool_version="0.2.0", max_depth=3, auto_depth=2))  # fmt: skip
@@ -171,3 +171,55 @@ def test_importing_the_app_does_not_create_a_database(tmp_path, monkeypatch):
 
 def test_version_constant_is_used_for_reuse_decision():
     assert isinstance(__version__, str)
+
+
+def test_v2_database_is_migrated_to_v3_keeping_edits(tmp_path):
+    """v2 restricted edits.format in SQL; v3 lets the API decide, so new view formats work."""
+    path = tmp_path / "v2.db"
+    con = sqlite3.connect(path)
+    con.executescript(
+        """
+        CREATE TABLE diagrams (
+          id TEXT PRIMARY KEY, repo_url TEXT NOT NULL, owner TEXT NOT NULL, name TEXT NOT NULL,
+          ref TEXT NOT NULL DEFAULT '', commit_sha TEXT NOT NULL,
+          commit_date TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
+          container_count INTEGER NOT NULL, component_count INTEGER NOT NULL,
+          max_depth INTEGER NOT NULL DEFAULT 1, auto_depth INTEGER NOT NULL DEFAULT 1,
+          mermaid_c4 TEXT NOT NULL, mermaid_flowchart TEXT, model_json TEXT NOT NULL,
+          warnings_json TEXT NOT NULL, tool_version TEXT NOT NULL,
+          UNIQUE (repo_url, ref, commit_sha));
+        CREATE TABLE edits (
+          diagram_id TEXT NOT NULL REFERENCES diagrams(id) ON DELETE CASCADE,
+          format TEXT NOT NULL CHECK (format IN ('c4', 'flowchart')),
+          depth INTEGER NOT NULL, text TEXT NOT NULL, PRIMARY KEY (diagram_id, format, depth));
+        PRAGMA user_version = 2;
+        """
+    )
+    model = Model(system_name="Old").model_dump_json()
+    con.execute(
+        "INSERT INTO diagrams VALUES ('d1','https://github.com/o/old','o','old','','a1','2026-01-01',"
+        "'2026-01-01',1,2,3,2,'c4 text','flow text',?,'[]','0.2.0')",
+        (model,),
+    )
+    con.execute("INSERT INTO edits VALUES ('d1','c4',2,'kept c4'),('d1','flowchart',3,'kept flow')")
+    con.commit()
+    with pytest.raises(sqlite3.IntegrityError):  # the old table really did reject other formats
+        con.execute("INSERT INTO edits VALUES ('d1','layers',1,'x')")
+    con.close()
+
+    s = DiagramStore(path)
+    d = s.get("d1")
+    assert (d.max_depth, d.auto_depth) == (3, 2)
+    assert (
+        s.get_edit("d1", "c4", 2) == "kept c4" and s.get_edit("d1", "flowchart", 3) == "kept flow"
+    )
+    s.set_edit("d1", "layers", 1, "my layers edit")  # now allowed
+    assert s.get_edit("d1", "layers", 1) == "my layers edit"
+    assert [(e.format, e.depth) for e in s.get("d1").saved_edits] == [
+        ("c4", 2), ("flowchart", 3), ("layers", 1),
+    ]  # fmt: skip
+    check = sqlite3.connect(path)
+    assert check.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert not check.execute("SELECT 1 FROM sqlite_master WHERE name = 'edits_v2'").fetchone()
+    s.delete("d1")  # the foreign key still cascades after the rebuild
+    assert check.execute("SELECT count(*) FROM edits").fetchone()[0] == 0

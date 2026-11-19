@@ -54,6 +54,9 @@ class Relation(Base):
     label: str  # "Uses", "Reads/writes", "Calls", ...
     technology: str | None = None
     strength: int = 1  # number of underlying import edges
+    # What the edge rests on. The Dependency graph uses only "import"; the others are weaker
+    # container-level evidence. Merged edges carry the union. Empty = stored before this field.
+    evidence: list[Literal["import", "compose", "manifest", "env"]] = Field(default_factory=list)
 
 
 class Model(Base):
@@ -90,10 +93,13 @@ class DiagramCreated(BaseModel):
     diagramId: str | None = None
 
 
+ViewFormat = Literal["c4", "flowchart", "layers"]
+
+
 class SavedEdit(Base):
     """Which views the user has saved an edit for (the text comes from the view endpoint)."""
 
-    format: Literal["c4", "flowchart"]
+    format: ViewFormat
     depth: int
 
 
@@ -142,13 +148,36 @@ class EditBody(BaseModel):
     text: str = Field(max_length=MAX_EDIT_CHARS)
 
 
+class UpwardEdge(Base):
+    source: str  # display names
+    target: str
+    strength: int  # imports
+
+
+class LayersSummary(Base):
+    """What the Dependency graph shows and what it left out (SPEC §9.3)."""
+
+    layer_count: int
+    layer_sizes: list[int]  # nodes per layer, layer 0 first
+    nodes: int
+    edges_drawn: int
+    edges_transitive_omitted: int  # implied by another path
+    edges_long_omitted: int  # spanning more layers than the readability limit
+    max_span: int  # that limit, in layers
+    upward_edges: int  # imports against the layer order (the cycle structure)
+    longest_chain: int  # = layer_count
+    isolated: int  # components with no import link at this depth, not drawn
+    top_upward: list[UpwardEdge]  # the strongest few
+
+
 class DiagramView(Base):
     """One rendering of a diagram: a format at a depth, plus the user's saved edit if any."""
 
-    format: Literal["c4", "flowchart"]
+    format: ViewFormat
     depth: int
     generated: str
     edited: str | None = None
     nodes: int  # components visible at this depth
     edges: int  # relations drawn at this depth
     hubs: int = 0  # shared components drawn once instead of with all their incoming edges
+    layers: LayersSummary | None = None  # only for the Dependency graph (format "layers")

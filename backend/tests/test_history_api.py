@@ -228,3 +228,97 @@ def test_deleting_a_diagram_removes_its_edits(remote, tmp_path, monkeypatch):
         c.delete(f"/api/diagrams/{did}")
     with sqlite3.connect(tmp_path / "h.db") as con:
         assert con.execute("SELECT count(*) FROM edits").fetchone()[0] == 0
+
+
+# --- Dependency graph (format "layers") ---------------------------------------------------------
+
+
+def nested_record(tmp_path, strip_evidence=False):
+    from app import __version__
+    from app.models import DiagramRecord
+    from app.render.c4 import RenderMeta, render_c4
+    from app.render.flowchart import render_flowchart
+    from app.render.view import auto_depth, max_depth
+    from tests.helpers import model_of
+    from tests.nested_sample import NESTED
+
+    m = model_of(tmp_path / "repo", NESTED, "w")
+    if strip_evidence:  # what a diagram stored by the previous release looks like
+        for r in m.relations:
+            r.evidence = []
+    meta = RenderMeta("o/w", None, "a" * 40, "2026-01-01T00:00:00+00:00", __version__)
+    depth = auto_depth(m)
+    return DiagramRecord(
+        repo_url="https://github.com/o/w", owner="o", name="w", commit_sha="a" * 40,
+        commit_date=meta.commit_date, created_at="2026-01-01T00:00:00+00:00",
+        container_count=1, component_count=sum(len(c.components) for c in m.containers),
+        max_depth=max_depth(m), auto_depth=depth, mermaid_c4=render_c4(m, meta, depth),
+        mermaid_flowchart=render_flowchart(m, meta, depth), model=m, warnings=[],
+        tool_version=__version__,
+    )  # fmt: skip
+
+
+def seeded(tmp_path, **kw):
+    store = DiagramStore(tmp_path / "h.db")
+    rec = store.add(nested_record(tmp_path, **kw))
+    return make_client(tmp_path, store), rec.id
+
+
+def test_layers_view_returns_text_and_a_summary(tmp_path):
+    c, did = seeded(tmp_path)
+    with c:
+        v = c.get(f"/api/diagrams/{did}/views/layers/3").json()
+        assert v["format"] == "layers" and v["generated"].startswith("flowchart TB")
+        s = v["layers"]
+        assert (s["layer_count"], s["nodes"], s["edges_drawn"]) == (5, 10, 10)
+        assert s["layer_sizes"] == [4, 1, 2, 2, 1] and s["upward_edges"] == 0
+        assert (v["nodes"], v["edges"], v["hubs"]) == (10, 10, 0)
+        # other formats carry no layers summary
+        assert c.get(f"/api/diagrams/{did}/views/flowchart/3").json()["layers"] is None
+        assert c.get(f"/api/diagrams/{did}/views/layers/1").json()["generated"] != v["generated"]
+
+
+def test_layers_edits_are_saved_per_depth_like_any_other_view(tmp_path):
+    c, did = seeded(tmp_path)
+    with c:
+        r = c.put(f"/api/diagrams/{did}/edits/layers/2", json={"text": "flowchart TB\n a-->b\n"})
+        assert r.status_code == 200 and r.json()["edited"] == "flowchart TB\n a-->b\n"
+        assert r.json()["layers"] is not None  # the summary still describes the generated graph
+        assert c.get(f"/api/diagrams/{did}/views/layers/3").json()["edited"] is None
+        assert c.get(f"/api/diagrams/{did}/views/flowchart/2").json()["edited"] is None
+        assert c.get(f"/api/diagrams/{did}").json()["saved_edits"] == [
+            {"format": "layers", "depth": 2}
+        ]
+        assert c.delete(f"/api/diagrams/{did}/edits/layers/2").json()["edited"] is None
+        gen = c.get(f"/api/diagrams/{did}/views/layers/2").json()["generated"]
+        c.put(f"/api/diagrams/{did}/edits/layers/2", json={"text": "x"})
+        assert (
+            c.put(f"/api/diagrams/{did}/edits/layers/2", json={"text": gen}).json()["edited"]
+            is None
+        )
+
+
+def test_layers_view_of_a_diagram_from_before_provenance_asks_to_regenerate(tmp_path):
+    c, did = seeded(tmp_path, strip_evidence=True)
+    with c:
+        r = c.get(f"/api/diagrams/{did}/views/layers/2")
+        assert r.status_code == 409
+        err = r.json()["error"]
+        assert (
+            err["code"] == "LAYERS_UNAVAILABLE" and "Submit the repository again" in err["message"]
+        )
+        assert (
+            c.get(f"/api/diagrams/{did}/views/flowchart/2").status_code == 200
+        )  # others still work
+        assert c.put(f"/api/diagrams/{did}/edits/layers/2", json={"text": "x"}).status_code == 409
+
+
+def test_layers_view_depth_is_validated_and_unknown_formats_still_rejected(tmp_path):
+    c, did = seeded(tmp_path)
+    with c:
+        top = c.get(f"/api/diagrams/{did}").json()["max_depth"]
+        assert c.get(f"/api/diagrams/{did}/views/layers/{top + 1}").json()["error"]["code"] == (
+            "INVALID_DEPTH"
+        )
+        assert c.get(f"/api/diagrams/{did}/views/layers/0").status_code == 422
+        assert c.get(f"/api/diagrams/{did}/views/graph/1").status_code == 422

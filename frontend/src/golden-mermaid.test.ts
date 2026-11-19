@@ -16,6 +16,9 @@ describe.skipIf(!existsSync(dir))("backend golden diagrams parse with the pinned
         "nested_c4_depth3.mmd",
         "nested_flowchart_depth1.mmd",
         "nested_flowchart_depth3.mmd",
+        "nested_layers_depth1.mmd",
+        "nested_layers_depth3.mmd",
+        "cyclic_layers_depth2.mmd",
       ]),
     );
   });

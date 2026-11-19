@@ -292,7 +292,7 @@ export interface components {
              * Format
              * @enum {string}
              */
-            format: "c4" | "flowchart";
+            format: "c4" | "flowchart" | "layers";
             /** Depth */
             depth: number;
             /** Generated */
@@ -308,6 +308,7 @@ export interface components {
              * @default 0
              */
             hubs: number;
+            layers: components["schemas"]["LayersSummary"] | null;
         };
         /** EditBody */
         EditBody: {
@@ -357,6 +358,34 @@ export interface components {
             /** Version */
             version: string;
         };
+        /**
+         * LayersSummary
+         * @description What the Dependency graph shows and what it left out (SPEC §9.3).
+         */
+        LayersSummary: {
+            /** Layer Count */
+            layer_count: number;
+            /** Layer Sizes */
+            layer_sizes: number[];
+            /** Nodes */
+            nodes: number;
+            /** Edges Drawn */
+            edges_drawn: number;
+            /** Edges Transitive Omitted */
+            edges_transitive_omitted: number;
+            /** Edges Long Omitted */
+            edges_long_omitted: number;
+            /** Max Span */
+            max_span: number;
+            /** Upward Edges */
+            upward_edges: number;
+            /** Longest Chain */
+            longest_chain: number;
+            /** Isolated */
+            isolated: number;
+            /** Top Upward */
+            top_upward: components["schemas"]["UpwardEdge"][];
+        };
         /** Model */
         Model: {
             /** System Name */
@@ -385,6 +414,8 @@ export interface components {
              * @default 1
              */
             strength: number;
+            /** Evidence */
+            evidence: ("import" | "compose" | "manifest" | "env")[];
         };
         /**
          * SavedEdit
@@ -395,9 +426,18 @@ export interface components {
              * Format
              * @enum {string}
              */
-            format: "c4" | "flowchart";
+            format: "c4" | "flowchart" | "layers";
             /** Depth */
             depth: number;
+        };
+        /** UpwardEdge */
+        UpwardEdge: {
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+            /** Strength */
+            strength: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -627,7 +667,7 @@ export interface operations {
             header?: never;
             path: {
                 diagram_id: string;
-                format: "c4" | "flowchart";
+                format: "c4" | "flowchart" | "layers";
                 depth: number;
             };
             cookie?: never;
@@ -669,7 +709,7 @@ export interface operations {
             header?: never;
             path: {
                 diagram_id: string;
-                format: "c4" | "flowchart";
+                format: "c4" | "flowchart" | "layers";
                 depth: number;
             };
             cookie?: never;
@@ -715,7 +755,7 @@ export interface operations {
             header?: never;
             path: {
                 diagram_id: string;
-                format: "c4" | "flowchart";
+                format: "c4" | "flowchart" | "layers";
                 depth: number;
             };
             cookie?: never;

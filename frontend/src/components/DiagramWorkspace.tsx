@@ -5,6 +5,7 @@ import { useDiagramEditor } from "../api/useDiagramEditor";
 import { useDebounced } from "../hooks/useDebounced";
 import CodePane from "./CodePane";
 import DepthControl from "./DepthControl";
+import LayersStrip from "./LayersStrip";
 import DiagramPane from "./DiagramPane";
 import SplitLayout from "./SplitLayout";
 import StatusBar from "./StatusBar";
@@ -29,9 +30,10 @@ function Editor({ d }: { d: DiagramRecord }) {
   const renderText = useDebounced(ed.text, RENDER_DEBOUNCE_MS, `${viewKey}:${ed.loading}`);
 
   const btn = "rounded border px-2 py-0.5 text-xs border-slate-300 dark:border-slate-600";
-  const tab = (f: EditFormat, name: string) => (
+  const tab = (f: EditFormat, name: string, hint?: string) => (
     <button
       role="tab"
+      title={hint}
       aria-selected={ed.format === f}
       className={`${btn} ${ed.format === f ? "bg-slate-200 dark:bg-slate-700" : ""}`}
       disabled={ed.loading}
@@ -69,7 +71,11 @@ function Editor({ d }: { d: DiagramRecord }) {
           }}
         />
         <span className="text-xs text-slate-500" data-testid="view-size">
-          {ed.loading ? "loading…" : `showing ${ed.nodes} components · ${ed.edges} relations`}
+          {ed.loading
+            ? "loading…"
+            : ed.loadError
+              ? "this view is not available"
+              : `showing ${ed.nodes} components · ${ed.edges} relations`}
         </span>
         {!ed.loading && ed.hubs > 0 && (
           <span
@@ -81,6 +87,7 @@ function Editor({ d }: { d: DiagramRecord }) {
           </span>
         )}
       </div>
+      {ed.layers && <LayersStrip s={ed.layers} />}
       {large && !ed.loading && (
         <div className="border-b bg-amber-50 px-4 py-1 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
           This view has {ed.nodes} components and may be slow and hard to read. Try a lower depth.
@@ -116,7 +123,7 @@ function Editor({ d }: { d: DiagramRecord }) {
               body: (
                 <div className="flex h-full flex-col">
                   <div className="min-h-0 flex-1">
-                    <CodePane value={ed.text} onChange={ed.setText} readOnly={ed.loading} />
+                    <CodePane value={ed.text} onChange={ed.setText} readOnly={ed.stale} />
                   </div>
                   <StatusBar
                     error={renderError}
@@ -137,6 +144,11 @@ function Editor({ d }: { d: DiagramRecord }) {
                 <div role="tablist" aria-label="Format" className="flex gap-1">
                   {tab("flowchart", "Flowchart")}
                   {tab("c4", "C4")}
+                  {tab(
+                    "layers",
+                    "Dependencies",
+                    "Layered dependency graph from import statements: importers above, what they import below",
+                  )}
                 </div>
               ),
               body: <DiagramPane text={renderText} fitKey={viewKey} onResult={setRenderError} />,

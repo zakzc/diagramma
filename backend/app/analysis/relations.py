@@ -15,33 +15,42 @@ def container_relations(detected: list[Detected], ext: ExternalResult) -> list[R
 
     acc: dict[tuple[str, str], Relation] = {}
 
-    def add(src: str, dst: str, label: str, tech: str | None) -> None:
+    def add(src: str, dst: str, label: str, tech: str | None, kind: str) -> None:
         if src == dst:
             return
         r = acc.get((src, dst))
         if r is None:
-            acc[(src, dst)] = Relation(source=src, target=dst, label=label, technology=tech or None)
+            acc[(src, dst)] = Relation(
+                source=src,
+                target=dst,
+                label=label,
+                technology=tech or None,
+                evidence=[kind],  # type: ignore[list-item]
+            )
         else:
             r.strength += 1
+            if kind not in r.evidence:
+                r.evidence = sorted([*r.evidence, kind])  # type: ignore[list-item]
 
     for d in detected:
         cid = d.container.id
         # docker-compose depends_on
         for dep in d.compose.depends_on if d.compose else []:
             if dep in by_service:
-                add(cid, by_service[dep], "Uses", None)
+                add(cid, by_service[dep], "Uses", None, "compose")
             elif dep in ext.by_service:
                 e = kinds[ext.by_service[dep]]
-                add(cid, e.id, EXTERNAL_LABEL[e.kind], ext.technology_by_id.get(e.id))
+                add(cid, e.id, EXTERNAL_LABEL[e.kind], ext.technology_by_id.get(e.id), "compose")
         # workspace siblings referenced as dependencies
         if d.info:
             for dep in sorted(d.info.all_deps):
                 if (tgt := by_pkg.get(dep)) is not None:
-                    add(cid, tgt, "Uses", None)
+                    add(cid, tgt, "Uses", None, "manifest")
 
     for link in ext.links:
         e = kinds[link.external_id]
-        add(link.container_id, e.id, EXTERNAL_LABEL[e.kind], ext.technology_by_id.get(e.id))
+        kind = "env" if link.evidence.startswith("env var") else "manifest"
+        add(link.container_id, e.id, EXTERNAL_LABEL[e.kind], ext.technology_by_id.get(e.id), kind)
 
     return sorted(acc.values(), key=lambda r: (r.source, r.target))
 
@@ -126,16 +135,29 @@ def component_relations(
     ext_pairs: set[tuple[str, str]] = set()  # (container id, external id) with import evidence
     cont_pairs: set[tuple[str, str]] = set()
 
-    def add(src: str, dst: str, label: str, tech: str | None, n: int = 1) -> None:
+    def add(
+        src: str,
+        dst: str,
+        label: str,
+        tech: str | None,
+        n: int = 1,
+        evidence: tuple[str, ...] = ("import",),
+    ) -> None:
         if src == dst:
             return
         r = acc.get((src, dst))
         if r is None:
             acc[(src, dst)] = Relation(
-                source=src, target=dst, label=label, technology=tech or None, strength=n
+                source=src,
+                target=dst,
+                label=label,
+                technology=tech or None,
+                strength=n,
+                evidence=sorted(evidence),  # type: ignore[arg-type]
             )
         else:
             r.strength += n
+            r.evidence = sorted({*r.evidence, *evidence})  # type: ignore[misc]
 
     for (s, d), n in sorted(graph.files.items()):
         cs, cd = file_comp.get(s), file_comp.get(d)
@@ -172,7 +194,9 @@ def component_relations(
             if (r.source, r.target) in ext_pairs:
                 continue
             prefs = SOURCE_PREF[kinds[r.target].kind]
-            add(_rep(src_det, prefs), r.target, r.label, r.technology, r.strength)
+            add(
+                _rep(src_det, prefs), r.target, r.label, r.technology, r.strength, tuple(r.evidence)
+            )
         elif r.target in by_container and (r.source, r.target) not in cont_pairs:
             tgt = by_container[r.target]
             add(
@@ -181,5 +205,6 @@ def component_relations(
                 r.label,
                 r.technology,
                 r.strength,
+                tuple(r.evidence),
             )
     return sorted(acc.values(), key=lambda r: (r.source, r.target))

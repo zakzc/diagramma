@@ -1,6 +1,13 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { type DiagramRecord, type EditFormat, discardEdit, getView, saveEdit } from "./client";
+import { useRef, useState } from "react";
+import {
+  type DiagramRecord,
+  type DiagramView,
+  type EditFormat,
+  discardEdit,
+  getView,
+  saveEdit,
+} from "./client";
 
 /**
  * Editor state for one diagram. A "view" is a format at a depth, and each view has its own text:
@@ -18,15 +25,21 @@ export function useDiagramEditor(d: DiagramRecord) {
     queryKey: ["view", d.id, format, depth],
     queryFn: () => getView(d.id, format, depth),
     placeholderData: keepPreviousData,
+    retry: false, // the backend is local: a failure (e.g. "regenerate this diagram") will not heal
   });
-  const view = viewQ.data;
-  const loading = viewQ.isPending || viewQ.isPlaceholderData;
+  // The last view that loaded stays on screen (read-only) while the next one loads or fails,
+  // so a failed view never traps the user without an editor or tabs.
+  const lastGood = useRef<DiagramView | undefined>(undefined);
+  if (viewQ.data && !viewQ.isPlaceholderData) lastGood.current = viewQ.data;
+  const view = viewQ.data ?? lastGood.current;
+  const loading = viewQ.isFetching && (viewQ.isPending || viewQ.isPlaceholderData);
+  const stale = loading || viewQ.isError; // what is shown is not this view's own text
   const generated = view?.generated ?? "";
   const base = view ? (view.edited ?? view.generated) : "";
   const text = drafts[key] ?? base;
 
   const setText = (next: string) => {
-    if (loading) return;
+    if (stale) return;
     setDrafts((cur) => {
       const { [key]: _old, ...rest } = cur;
       return next === base ? rest : { ...rest, [key]: next };
@@ -62,21 +75,23 @@ export function useDiagramEditor(d: DiagramRecord) {
     autoDepth: d.auto_depth,
     ready: view !== undefined, // false only until the very first view has loaded
     loading,
+    stale,
     loadError: viewQ.isError ? viewQ.error.message : null,
     nodes: view?.nodes ?? 0,
     edges: view?.edges ?? 0,
     hubs: view?.hubs ?? 0,
+    layers: stale ? null : (view?.layers ?? null), // only for the Dependency graph
     text,
     setText,
     generated,
-    dirty: !loading && text !== base, // differs from what is saved
-    modified: !loading && text !== generated, // differs from the generated diagram
+    dirty: !stale && text !== base, // differs from what is saved
+    modified: !stale && text !== generated, // differs from the generated diagram
     hasSavedEdit: !!view && view.edited !== null,
     saving: save.isPending,
     saveError: save.error?.message ?? discard.error?.message ?? null,
-    save: () => !loading && save.mutate({ format, depth, text }),
+    save: () => !stale && save.mutate({ format, depth, text }),
     reset: () => {
-      if (loading) return;
+      if (stale) return;
       if (view && view.edited !== null) discard.mutate({ format, depth });
       else clearDraft(key);
     },

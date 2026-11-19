@@ -1,10 +1,14 @@
 # Diagramma — Specification
 
-**Version:** 0.8
+**Version:** 0.9
 **Purpose:** A locally run web app. You paste a GitHub repo URL, the backend analyses the repo, and the frontend shows a C4-style **Component diagram** of the *entire application* as a Mermaid graph. Past diagrams are kept in a history list so you can reopen them.
 
+### Changes from v0.8
+- **M8 is built, in the simpler form.** The Dependencies tab, the `layers` format (views and edits), relation provenance (`evidence`), tool version 0.3.0 and schema v3 are implemented (§9.3). What was deliberately *not* built, and is listed in the roadmap: **layer bands** (a subgraph per layer: explicit "Layer N" titles, but much taller drawings), **hub marking** in this view, drawing upward edges on demand, and per-container filtering. The view is a plain top-down `flowchart TB` with the layer number and a colour per layer on every box.
+- Added to the design while building: `max_span` in the summary; components with no import link are left out and counted (`isolated`); diagrams generated before provenance existed answer `409 LAYERS_UNAVAILABLE` with "submit the repository again"; schema v3 drops the SQL check on `edits.format` (the API validates it) so new view formats need no migration; a view that fails to load keeps the previous one on screen, read-only, with the tabs still usable.
+
 ### Changes from v0.7
-- **New view: the Dependency graph** (§9.3): a layered graph built from import statements, in which foundations sit at the bottom and entry points on top, cycles are reported instead of hidden, and redundant or very long edges are left out. It is a third view next to Flowchart and C4. **Planned as M8; not built yet.**
+- **New view: the Dependency graph** (§9.3): a layered graph built from import statements, in which foundations sit at the bottom and entry points on top, cycles are reported instead of hidden, and redundant or very long edges are left out. It is a third view next to Flowchart and C4. **Built as M8 in a simpler form in v0.9 (see below).**
 - Relations record where their evidence comes from (`evidence`, §7), so this view can use import edges only.
 - Milestones are now written **M1, M2, …** (§11). The deeper-components work is recorded as **M7** (built) and the Dependency graph as **M8** (planned); acceptance items 9-14 cover them.
 
@@ -131,7 +135,7 @@ A top bar for input, a collapsible history sidebar, and below the bar a **horizo
   - **Reset** returns the text to the generated version. A dirty marker shows when the text differs from what is saved.
   - **Save** stores the edited text on the history entry (so the fixed version survives reload/restart). Re-generating the repo never overwrites saved edits silently: the original generated text is kept alongside, and a Reset restores it.
 - **Diagram pane:** renders the current editor text with pan/zoom and fit-to-screen. The **Flowchart / C4** toggle sits in this pane's header; **Flowchart is the default**. If C4 fails to render, the error is shown and the flowchart is offered.
-- **Dependency graph tab (M8).** A third tab, labelled **Dependencies**, next to Flowchart and C4. It uses the same Depth control, editor, Copy and per-view saved edits (format `layers`), and adds a summary strip: layers, upward dependencies, longest chain, and what was left out (§9.3).
+- **Dependency graph tab (M8, built).** A third tab, labelled **Dependencies**, next to Flowchart and C4. It uses the same Depth control, editor, Copy and per-view saved edits (format `layers`), and adds a summary strip: layers, upward dependencies, longest chain, and what was left out (§9.3).
 - **Depth control** (above the split, shown when the model has more than one level): buttons 1…max (a dropdown beyond 8), the default level marked. Each (format, depth) is its own view with its own editor text, draft and saved edit; the header shows how many boxes and relations the view draws, how many shared modules were drawn once instead of wired, and warns above 150 boxes.
 - **Export:** **Copy .mmd** puts the *current editor text* (including unsaved edits) of the active format on the clipboard. There is no file download.
 - **History:** sidebar list of generated diagrams (repo, ref, short SHA, date, container/component counts). Click to reopen from storage; delete entry. Re-submitting the same repo+ref at the same commit reuses the existing entry.
@@ -197,7 +201,7 @@ edits(                                                -- the user's saved edits,
   PRIMARY KEY (diagram_id, format, depth)
 )
 ```
-`PRAGMA user_version` is 2 (3 from M8, which widens the `format` check to include `layers`; the migration only rebuilds the `edits` table). A version-1 database (edits as two columns on `diagrams`) is migrated in place: those edits move to the `edits` table at depth 1. Other depths are rendered on demand from `model_json`, so only the auto-depth texts are stored.
+`PRAGMA user_version` is 2 (3 from M8: the `edits` table no longer restricts `format` in SQL, the API validates it, so formats such as `layers` need no further migration; the v2→v3 step rebuilds only that table and keeps every row). A version-1 database (edits as two columns on `diagrams`) is migrated in place: those edits move to the `edits` table at depth 1. Other depths are rendered on demand from `model_json`, so only the auto-depth texts are stored.
 Clones go to `~/.cache/diagramma/repos/`. Generated diagrams do not depend on the cache afterwards.
 
 ### 5.4 Jobs
@@ -348,27 +352,27 @@ Standard `flowchart LR` with one `subgraph` per container and **nested subgraphs
 - attaches edges that **cross a group boundary** to the sibling groups just below the common parent (across containers and to external systems: to the level-1 component), while edges inside a group keep file-level detail; parallel edges merge;
 - marks **hubs** (shared modules such as utils/config/core): a component with at least 8 dependents *and* at least 25% of all dependents is drawn once with a dashed border and "used by N", and its incoming edges are not drawn (a comment line lists them). Databases and other external systems are never hubs.
 
-### 9.3 Dependency graph (layered) — M8, planned
+### 9.3 Dependency graph (layered) — M8, built (simplified)
 
 The flowchart (§9.2) is a **structural map**: groups, folders, who is next to whom. The Dependency graph answers a different question: **in which direction does the code depend, and how many levels deep is that chain?** It orders the components into **layers** using the import statements only, so shared foundations sit at the bottom and entry points at the top. Edges point from the importer to what it imports.
 
 **Input.** The boxes at the chosen depth (the same roll-up as §9.2) plus external systems that some import references. Only relations whose `evidence` contains `import` are used. Compose `depends_on`, manifest and env-var evidence are weaker and would invent layers, so they are excluded; databases and queues reached only through them do not appear.
 
-**Algorithm** (pure and deterministic, `analysis/layering.py`; ties are always broken by id):
+**Algorithm** (pure and deterministic, `analysis/layering.py`; ties are always broken by id). Components with no import link at this depth are not part of the graph; they are counted as `isolated`.
 1. **Break cycles by ordering, not by collapsing.** Order the nodes with the weighted Eades-Lin-Smyth greedy heuristic (weight = import count) so that dependents come first. An edge pointing against that order is an **upward edge**. Collapsing each strongly connected component into one node is wrong for real code: Django at package level is *one* component containing 15 of its 19 packages, which would erase the structure; ordering gives 10 layers with 34 upward edges out of 114.
 2. **Layer.** Over the remaining (forward) edges, layer 0 = depends on nothing; `layer(n) = 1 + max(layer(d))` over its dependencies `d`. Every forward edge therefore goes from a strictly higher layer to a strictly lower one. External systems are always layer 0.
 3. **Transitive reduction.** Omit a forward edge `A→C` when another path `A→…→C` exists (the dependency is still true, and it is implied). Measured on real repos: FastAPI template depth 2, 125 → 74 edges; Flask depth 2, 91 → 45; Django depth 1, 80 → 22.
 4. **Long edges.** A forward edge spanning more than `MAX_SPAN` layers (default 3, to be tuned in M8) is not drawn; each affected node shows "+N deeper". Long edges are what turn a layered drawing into a tangle (measured on the FastAPI template).
 5. **Upward edges are not drawn by default.** They are the cycle structure and would dominate the picture (Django: 34 red lines over 22 forward ones). Instead every endpoint shows "↑N", and the summary lists the strongest ones. A toggle to draw them is on the roadmap.
-6. **Hubs.** The §9.2 hub rule is applied after the reduction (which already removes most of their edges).
+6. **Hubs.** *Not applied in this view* (deferred, §12): in the prototype the reduction already removed most of their edges.
 
 **Output.** A `flowchart TB` whose text is the view:
-- one `subgraph` per layer, titled "Layer N", highest at the top, nodes side by side (`direction LR`), kept in order with invisible `~~~` links; plain top-down ranking without bands also layers correctly but gives no explicit layer labels;
-- nodes coloured by **container** (so a frontend/backend split is visible), name plus component technology, `×N` on edges with more than one import; external systems as cylinders in layer 0;
-- nodes with upward edges get a dashed border and "↑N"; hubs as in §9.2;
+- **plain top-down ranking** (no bands): importers above, what they import below. Every box shows its **layer number** (`L3`) and is coloured by layer (eight soft colours, cycling), so the layering is visible even where Mermaid's own ranking differs slightly. The explicit-bands variant (one `subgraph` per layer, "Layer N" titles, invisible `~~~` ordering links) renders correctly too but draws much taller (Django at depth 1 about 3,500px) and is deferred;
+- the **container name** is added to each box when the model has several containers (so a frontend/backend split is visible); `×N` on edges with more than one import; external systems as cylinders in layer 0;
+- nodes with upward edges get a red dashed border and "↑N";
 - header comments give the counts below. Output is deterministic, copyable and editable like every other view; saved edits are per (`layers`, depth).
 
-**Summary** (the `layers` object of the view response): `layer_count`, `layer_sizes[]`, `nodes`, `edges_drawn`, `edges_transitive_omitted`, `edges_long_omitted`, `upward_edges`, `longest_chain` (= `layer_count`), `top_upward[]` (the 10 strongest: source, target, strength), `hubs`.
+**Summary** (the `layers` object of the view response): `layer_count`, `layer_sizes[]`, `nodes`, `edges_drawn`, `edges_transitive_omitted`, `edges_long_omitted`, `max_span`, `upward_edges`, `longest_chain` (= `layer_count`), `isolated`, `top_upward[]` (the 10 strongest: source and target names, strength).
 
 **Scope limits for M8.** Whole system only (no per-container filter); only languages with import analysis (TS/JS, Python); one depth at a time.
 
@@ -396,12 +400,12 @@ diagramma/
         relations.py
         externals.py       # + catalogue.yaml
         reduce.py          # top-level cap/merge
-        layering.py        # (M8) cycle breaking, layers, reduction: pure functions
+        layering.py        # cycle breaking, layers, reduction: pure functions (M8)
       render/
         view.py            # depth roll-up, grouped edges, hubs
         c4.py
         flowchart.py
-        layers.py          # (M8) Dependency graph text
+        layers.py          # Dependency graph text and summary (M8)
         escape.py
       models.py            # Pydantic model + API schemas
     tests/
@@ -427,7 +431,7 @@ diagramma/
 - **M5 History:** SQLite persistence, sidebar, reopen and delete.
 - **M6 Editor split view:** (can be built right after M1, since it only needs text) resizable 1/3 : 2/3 split, fold states, live preview with error bar, save/reset of edits.
 - **M7 Deeper components and a clearer view** (built): components as a tree with a Depth control, depth roll-up of relations, grouped edges and hubs in the flowchart, per-view edits, schema v2.
-- **M8 Dependency graph view** (planned, §9.3): relation provenance; layering with cycle breaking, transitive reduction and long-edge handling; the `layers` format in the views and edits endpoints; the Dependencies tab with its summary strip.
+- **M8 Dependency graph view** (built in a simpler form, §9.3): relation provenance; layering with cycle breaking, transitive reduction and long-edge handling; the `layers` format in the views and edits endpoints; the Dependencies tab with its summary strip.
 
 **Acceptance (M1-M6, MVP)**
 1. Pasting a GitHub URL and pressing Generate shows progress and ends with a rendered whole-app diagram.
@@ -461,7 +465,8 @@ Roughly in the order I'd suggest:
 1. **Details panel:** click a component to see paths, role, technology, evidence and its incoming/outgoing relations (data already in the model). It would also list exactly who depends on a hub or on a layer, and the upward edges of the Dependency graph.
 2. **More languages:** Go, Java, C#, Ruby, Rust, PHP.
 3. **Smarter components:** import-graph community detection (Louvain) when folder conventions give nothing; framework markers (`@Controller`, Spring, Django apps, Rails).
-4. **Smarter readability:** weak-edge pruning, container-level fallback for huge repos; for the Dependency graph: a toggle to draw upward edges, strict layer alignment, and per-container filtering. (Hub nodes drawn once are done, §9.2.)
+4. **Smarter readability:** weak-edge pruning, container-level fallback for huge repos; for the Dependency graph: a toggle to draw upward edges, strict layer alignment, and per-container filtering. (Hub nodes drawn once are done for the flowchart, §9.2.)
+   **Dependency graph extras:** layer bands with explicit "Layer N" titles, hub marking, and per-container filtering.
    **Layer rules:** let the user forbid upward dependencies (or name allowed layer directions) and get a report of violations.
 5. **History upgrades:** rename, search, re-run button, compare two commits of the same repo.
 6. **Cancel jobs** and richer progress.

@@ -1,7 +1,7 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from typing import Literal
+from dataclasses import dataclass
 
 from fastapi import APIRouter, Request, Response
 from fastapi.concurrency import run_in_threadpool
@@ -19,9 +19,12 @@ from app.models import (
     EditBody,
     ErrorResponse,
     Health,
+    LayersSummary,
+    ViewFormat,
 )
 from app.render.c4 import RenderMeta, render_c4
 from app.render.flowchart import drawn_relations, render_flowchart
+from app.render.layers import analyze_layers, render_layers
 from app.render.view import build_view
 
 router = APIRouter(prefix="/api")
@@ -89,36 +92,52 @@ def delete_diagram(diagram_id: str, request: Request) -> Response:
     return Response(status_code=204)
 
 
-Format = Literal["c4", "flowchart"]
+Format = ViewFormat
 
 
-def _generated(rec: DiagramRecord, fmt: Format, depth: int) -> tuple[str, int, int, int]:
-    """(Mermaid text, boxes, edges drawn, hubs marked) for a format at a depth."""
+@dataclass
+class Generated:
+    text: str
+    nodes: int  # boxes drawn
+    edges: int  # edges drawn
+    hubs: int = 0  # shared modules marked instead of wired (flowchart)
+    layers: LayersSummary | None = None  # dependency graph only
+
+
+def _generated(rec: DiagramRecord, fmt: Format, depth: int) -> Generated:
+    """The Mermaid text of a format at a depth, with what it draws."""
     if not 1 <= depth <= rec.max_depth:
         raise AppError("INVALID_DEPTH", f"Depth must be between 1 and {rec.max_depth}.")
     meta = RenderMeta(
         f"{rec.owner}/{rec.name}", rec.ref, rec.commit_sha, rec.commit_date, rec.tool_version
     )
-    text = (render_c4 if fmt == "c4" else render_flowchart)(rec.model, meta, depth)
+    if fmt == "layers":  # imports only, layered; see SPEC §9.3
+        analysis = analyze_layers(rec.model, depth)
+        text = render_layers(rec.model, meta, depth, analysis)
+        s = analysis.summary
+        return Generated(text, s.nodes, s.edges_drawn, layers=s)
     view = build_view(rec.model, depth)
     if fmt == "flowchart":  # grouped edges, shared modules marked instead of wired
         edges, hubs = drawn_relations(view)
-        return text, view.nodes, len(edges), len(hubs)
-    return text, view.nodes, len(view.relations), 0  # C4 can only connect boxes: every edge
+        return Generated(
+            render_flowchart(rec.model, meta, depth), view.nodes, len(edges), len(hubs)
+        )
+    # C4 can only connect boxes: every edge
+    return Generated(render_c4(rec.model, meta, depth), view.nodes, len(view.relations))
 
 
 def _view(request: Request, diagram_id: str, fmt: Format, depth: int) -> DiagramView:
     store = request.app.state.store
-    rec = store.get(diagram_id)
-    text, nodes, edges, hubs = _generated(rec, fmt, depth)
+    g = _generated(store.get(diagram_id), fmt, depth)
     return DiagramView(
         format=fmt,
         depth=depth,
-        generated=text,
+        generated=g.text,
         edited=store.get_edit(diagram_id, fmt, depth),
-        nodes=nodes,
-        edges=edges,
-        hubs=hubs,
+        nodes=g.nodes,
+        edges=g.edges,
+        hubs=g.hubs,
+        layers=g.layers,
     )
 
 
@@ -142,7 +161,7 @@ def save_edit(
 ) -> DiagramView:
     """Save the user's edited text for this view (text equal to the generated one clears it)."""
     store = request.app.state.store
-    generated = _generated(store.get(diagram_id), format, depth)[0]
+    generated = _generated(store.get(diagram_id), format, depth).text
     store.set_edit(diagram_id, format, depth, None if body.text == generated else body.text)
     return _view(request, diagram_id, format, depth)
 

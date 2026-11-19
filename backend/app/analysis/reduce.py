@@ -85,6 +85,7 @@ def reduce_components(model: Model, cap: int = DEFAULT_CAP) -> None:
             acc[(s, t)] = r.model_copy(update={"source": s, "target": t})
         else:
             cur.strength += r.strength
+            cur.evidence = sorted({*cur.evidence, *r.evidence})  # type: ignore[misc]
             if cur.label != r.label:
                 cur.label = "Uses"
     model.relations = sorted(acc.values(), key=lambda r: (r.source, r.target))

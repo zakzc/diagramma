@@ -20,7 +20,22 @@ vi.mock("./DiagramPane", () => ({
   ),
 }));
 
-type View = { generated: string; edited: string | null; nodes: number; edges: number; hubs?: number };
+type Layers = {
+  layer_count: number; layer_sizes: number[]; nodes: number; edges_drawn: number;
+  edges_transitive_omitted: number; edges_long_omitted: number; max_span: number;
+  upward_edges: number; longest_chain: number; isolated: number;
+  top_upward: { source: string; target: string; strength: number }[];
+};
+type View = {
+  generated: string; edited: string | null; nodes: number; edges: number; hubs?: number;
+  layers?: Layers | null;
+};
+const LAYERS: Layers = {
+  layer_count: 5, layer_sizes: [4, 1, 2, 2, 1], nodes: 10, edges_drawn: 9,
+  edges_transitive_omitted: 3, edges_long_omitted: 1, max_span: 3, upward_edges: 2,
+  longest_chain: 5, isolated: 4, top_upward: [{ source: "Alpha", target: "Beta", strength: 7 }],
+};
+let failFormats: string[] = [];
 let record: Record<string, unknown>;
 let views: Record<string, View>;
 let calls: { method: string; url: string; body?: string }[];
@@ -39,6 +54,7 @@ const viewFor = (format: string, depth: number): View =>
     edited: null,
     nodes: depth * 10,
     edges: depth * 12,
+    layers: format === "layers" ? LAYERS : null,
   });
 
 function installFetch() {
@@ -48,10 +64,14 @@ function installFetch() {
     vi.fn(async (url: string, init?: RequestInit) => {
       const method = init?.method ?? "GET";
       calls.push({ method, url, body: init?.body as string | undefined });
-      const m = /\/(views|edits)\/(c4|flowchart)\/(\d+)$/.exec(url);
+      const m = /\/(views|edits)\/(c4|flowchart|layers)\/(\d+)$/.exec(url);
       if (!m) return new Response(JSON.stringify(record));
       if (delay && m[1] === "views") await delay;
       const [, , format, d] = m;
+      if (failFormats.includes(format)) {
+        const err = { error: { code: "LAYERS_UNAVAILABLE", message: "Submit the repository again." } };
+        return new Response(JSON.stringify(err), { status: 409 });
+      }
       const v = viewFor(format, Number(d));
       if (method === "PUT") v.edited = JSON.parse(init!.body as string).text;
       if (method === "DELETE") v.edited = null;
@@ -80,6 +100,7 @@ beforeEach(() => {
   record = baseRecord();
   views = {};
   delay = null;
+  failFormats = [];
   installFetch();
   vi.useFakeTimers({ shouldAdvanceTime: true });
 });
@@ -283,4 +304,64 @@ test("a view that fails to load is reported", async () => {
   );
   mount();
   expect(await screen.findByText(/Could not load this view: Depth must be between 1 and 3/)).toBeInTheDocument();
+});
+
+
+test("the Dependencies tab shows the layered graph and what it left out", async () => {
+  mount();
+  await ready();
+  expect(screen.queryByTestId("layers-strip")).toBeNull(); // not on the other tabs
+  fireEvent.click(screen.getByRole("tab", { name: "Dependencies" }));
+  await waitFor(() => expect(editor().value).toBe("layers generated d2"));
+  expect(calls.some((c) => c.url === "/api/diagrams/d1/views/layers/2")).toBe(true);
+  const strip = screen.getByTestId("layers-strip");
+  expect(strip).toHaveTextContent("5 layers");
+  expect(strip).toHaveTextContent("longest chain 5");
+  expect(strip).toHaveTextContent("2 upward dependencies (not drawn)");
+  expect(strip).toHaveTextContent("3 implied by another path, 1 spanning more than 3 layers");
+  expect(strip).toHaveTextContent("4 with no import link not drawn");
+  fireEvent.click(screen.getByText(/Strongest upward dependencies \(1\)/));
+  expect(screen.getByText(/Alpha → Beta/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "Flowchart" }));
+  await waitFor(() => expect(screen.queryByTestId("layers-strip")).toBeNull());
+});
+
+test("an acyclic dependency graph says there are no import cycles", async () => {
+  views["layers:2"] = { generated: "g", edited: null, nodes: 5, edges: 4, layers: { ...LAYERS, upward_edges: 0, top_upward: [] } };
+  mount();
+  await ready();
+  fireEvent.click(screen.getByRole("tab", { name: "Dependencies" }));
+  await waitFor(() => expect(screen.getByTestId("layers-strip")).toHaveTextContent("no import cycles"));
+  expect(screen.queryByText(/Strongest upward/)).toBeNull();
+});
+
+test("dependency graph edits are saved per depth, like every other view", async () => {
+  mount();
+  await ready();
+  fireEvent.click(screen.getByRole("tab", { name: "Dependencies" }));
+  await waitFor(() => expect(editor().value).toBe("layers generated d2"));
+  type("my layers edit");
+  fireEvent.click(screen.getByText("Save"));
+  await waitFor(() => expect(screen.queryByText(/Unsaved changes/)).toBeNull());
+  expect(calls.find((c) => c.method === "PUT")!.url).toBe("/api/diagrams/d1/edits/layers/2");
+  fireEvent.click(depthBtn(3));
+  await waitFor(() => expect(editor().value).toBe("layers generated d3")); // untouched
+});
+
+test("a view that cannot be generated keeps the previous one on screen and the tabs usable", async () => {
+  failFormats = ["layers"];
+  mount();
+  await ready();
+  fireEvent.click(screen.getByRole("tab", { name: "Dependencies" }));
+  expect(await screen.findByText(/Could not load this view: Submit the repository again\./)).toBeInTheDocument();
+  expect(screen.getByTestId("view-size")).toHaveTextContent("this view is not available");
+  expect(editor().value).toBe("flowchart generated d2"); // the last good view is still there ...
+  expect(editor().readOnly).toBe(true); // ... but cannot be edited as if it were this one
+  expect(screen.getByText("Save")).toBeDisabled();
+  expect(screen.queryByTestId("layers-strip")).toBeNull();
+  // and the user is not trapped
+  fireEvent.click(screen.getByRole("tab", { name: "C4" }));
+  await waitFor(() => expect(editor().value).toBe("c4 generated d2"));
+  expect(editor().readOnly).toBe(false);
+  expect(screen.queryByText(/Could not load this view/)).toBeNull();
 });

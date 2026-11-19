@@ -4,8 +4,9 @@ One connection per operation (the API serves requests from a thread pool). The d
 and schema are created lazily on first use, so importing the app never touches the disk.
 
 Schema versions: 1 = one saved edit per format on the diagram row; 2 = edits live in their own
-table keyed by (diagram, format, depth) and diagrams carry their depth range. Version 1
-databases are migrated in place.
+table keyed by (diagram, format, depth) and diagrams carry their depth range; 3 = the edits
+table no longer restricts `format` in SQL (the API validates it), so new view formats such as
+`layers` need no migration. Older databases are migrated in place.
 """
 
 import json
@@ -19,7 +20,7 @@ from pathlib import Path
 from app.errors import AppError
 from app.models import DiagramRecord, DiagramSummary, Model, SavedEdit
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # `ref` is '' (not NULL) when no ref was given so that UNIQUE treats "no ref" as one value.
 SCHEMA = """
@@ -46,7 +47,7 @@ CREATE TABLE IF NOT EXISTS diagrams (
 CREATE INDEX IF NOT EXISTS diagrams_created ON diagrams (created_at DESC);
 CREATE TABLE IF NOT EXISTS edits (
   diagram_id TEXT NOT NULL REFERENCES diagrams(id) ON DELETE CASCADE,
-  format TEXT NOT NULL CHECK (format IN ('c4', 'flowchart')),
+  format TEXT NOT NULL,  -- validated by the API: c4, flowchart, layers
   depth INTEGER NOT NULL,
   text TEXT NOT NULL,
   PRIMARY KEY (diagram_id, format, depth)
@@ -83,6 +84,17 @@ def _migrate_v1(con: sqlite3.Connection) -> None:
             con.execute(f"ALTER TABLE diagrams DROP COLUMN {col}")
 
 
+def _migrate_v2(con: sqlite3.Connection) -> None:
+    """v2 -> v3: rebuild `edits` without the CHECK on `format`, keeping every row."""
+    con.execute("ALTER TABLE edits RENAME TO edits_v2")
+    con.executescript(SCHEMA)  # creates the new edits table (diagrams already exists)
+    con.execute(
+        "INSERT INTO edits (diagram_id, format, depth, text) "
+        "SELECT diagram_id, format, depth, text FROM edits_v2"
+    )
+    con.execute("DROP TABLE edits_v2")
+
+
 class DiagramStore:
     def __init__(self, path: Path | str | None = None):
         self._explicit = Path(path) if path else None
@@ -112,7 +124,9 @@ class DiagramStore:
                 ).fetchone()
                 with con:
                     if has_table and version < 2:
-                        _migrate_v1(con)
+                        _migrate_v1(con)  # also creates the current edits table
+                    elif has_table and version == 2:
+                        _migrate_v2(con)
                     else:
                         con.executescript(SCHEMA)
                     con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
