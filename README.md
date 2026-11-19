@@ -7,13 +7,15 @@ Paste a GitHub repo URL and get a C4-style **Component diagram** of the whole ap
 - Copy the raw Mermaid (`.mmd`) text and use it in any Mermaid viewer.
 - Past diagrams are kept in a history list and reopen without re-analysing.
 
-> **Status:** MVP complete (SPEC §11 acceptance 1-8 met). [SPEC.md](SPEC.md) is the full design (v0.7), [progress.md](progress.md) is the build log with every decision and deviation. If this README and SPEC.md disagree, SPEC.md wins; fix whichever is wrong.
+> **Status:** MVP (M1-M6) and the deeper-components work (M7) are built; the Dependency graph view (M8) is specified but not started. [SPEC.md](SPEC.md) is the full design (v0.8), [progress.md](progress.md) is the build log with every decision and deviation. If this README and SPEC.md disagree, SPEC.md wins; fix whichever is wrong.
 
 ---
 
 ## Scope
 
 **In (MVP):** whole-app C4 Component diagram (containers → components → externals/data stores), TS/JS and Python analysis, C4 and flowchart output, editable code pane with live preview, SQLite history, copy `.mmd`.
+
+**Planned (M8, SPEC §9.3):** a **Dependency graph** view: a layered graph built from import statements (foundations at the bottom, entry points on top, cycles reported, redundant and very long edges left out).
 
 **Out:** persons/actors, class-level detail, runtime analysis, multi-user/auth/hosting, LLM features. Later work is in SPEC.md §12.
 
@@ -184,7 +186,7 @@ npm run build                  # type-checks (tsc, strict) and builds to fronten
 
 ## Implementation conventions
 
-- Follow the milestone order in SPEC.md §11 and tick items off in [progress.md](progress.md); record every deviation there and in SPEC.md.
+- Follow the milestone order (M1, M2, …) in SPEC.md §11 and tick items off in [progress.md](progress.md); record every deviation there and in SPEC.md.
 - Keep stages pure and model-driven; no stage reads another stage's internals.
 - Every detection rule has a test that builds a small sample repo (`backend/tests/helpers.py`); renderers have golden-file tests (`backend/tests/golden/`) that also cover determinism, and the frontend checks that the golden output parses with the pinned Mermaid.
 - Tests never touch the real history database or clone cache (an autouse fixture redirects both).

@@ -1,7 +1,12 @@
 # Diagramma — Specification
 
-**Version:** 0.7
+**Version:** 0.8
 **Purpose:** A locally run web app. You paste a GitHub repo URL, the backend analyses the repo, and the frontend shows a C4-style **Component diagram** of the *entire application* as a Mermaid graph. Past diagrams are kept in a history list so you can reopen them.
+
+### Changes from v0.7
+- **New view: the Dependency graph** (§9.3): a layered graph built from import statements, in which foundations sit at the bottom and entry points on top, cycles are reported instead of hidden, and redundant or very long edges are left out. It is a third view next to Flowchart and C4. **Planned as M8; not built yet.**
+- Relations record where their evidence comes from (`evidence`, §7), so this view can use import edges only.
+- Milestones are now written **M1, M2, …** (§11). The deeper-components work is recorded as **M7** (built) and the Dependency graph as **M8** (planned); acceptance items 9-14 cover them.
 
 ### Changes from v0.6
 - **Deeper components.** A container is no longer split only by its top-level folders: components form a **tree** (folders, sub-folders and, for containers up to 300 source files, individual files; §8). Relations are stored between the leaves and **rolled up to a chosen depth** when rendering. The UI has a **Depth** control; the default is the deepest level that still shows at most 60 boxes.
@@ -35,6 +40,7 @@
 3. View it in-app and **copy the raw Mermaid (`.mmd`) text** to use in any other Mermaid viewer.
 4. Keep a **history** of generated diagrams and reopen them without re-analysing.
 5. Runs entirely on your machine. The only network use is `git clone` from GitHub.
+6. A **Dependency graph** view of the same repo: a layered graph built from import statements that shows what depends on what and which way the code flows (M8, §9.3).
 
 ### Non-goals
 - Persons/actors in the diagram. Class-level detail. Runtime/dynamic analysis.
@@ -125,6 +131,7 @@ A top bar for input, a collapsible history sidebar, and below the bar a **horizo
   - **Reset** returns the text to the generated version. A dirty marker shows when the text differs from what is saved.
   - **Save** stores the edited text on the history entry (so the fixed version survives reload/restart). Re-generating the repo never overwrites saved edits silently: the original generated text is kept alongside, and a Reset restores it.
 - **Diagram pane:** renders the current editor text with pan/zoom and fit-to-screen. The **Flowchart / C4** toggle sits in this pane's header; **Flowchart is the default**. If C4 fails to render, the error is shown and the flowchart is offered.
+- **Dependency graph tab (M8).** A third tab, labelled **Dependencies**, next to Flowchart and C4. It uses the same Depth control, editor, Copy and per-view saved edits (format `layers`), and adds a summary strip: layers, upward dependencies, longest chain, and what was left out (§9.3).
 - **Depth control** (above the split, shown when the model has more than one level): buttons 1…max (a dropdown beyond 8), the default level marked. Each (format, depth) is its own view with its own editor text, draft and saved edit; the header shows how many boxes and relations the view draws, how many shared modules were drawn once instead of wired, and warns above 150 boxes.
 - **Export:** **Copy .mmd** puts the *current editor text* (including unsaved edits) of the active format on the clipboard. There is no file download.
 - **History:** sidebar list of generated diagrams (repo, ref, short SHA, date, container/component counts). Click to reopen from storage; delete entry. Re-submitting the same repo+ref at the same commit reuses the existing entry.
@@ -163,7 +170,7 @@ A top bar for input, a collapsible history sidebar, and below the bar a **horizo
 | `GET /api/jobs/{jobId}/events` | SSE: `{stage, message}` events, then `done {diagramId}` or `error {code, message}`. |
 | `GET /api/diagrams` | History list (summary fields). |
 | `GET /api/diagrams/{id}` | Full record: both Mermaid texts, metadata, warnings. |
-| `GET /api/diagrams/{id}/views/{format}/{depth}` | One rendering: the generated text, the user's saved edit for that exact view (or null), and the number of boxes, edges and hubs drawn. `depth` is 1…`max_depth` (else `INVALID_DEPTH`). |
+| `GET /api/diagrams/{id}/views/{format}/{depth}` | One rendering: the generated text, the user's saved edit for that exact view (or null), and the number of boxes, edges and hubs drawn. `depth` is 1…`max_depth` (else `INVALID_DEPTH`). From M8, `format` may also be `layers` (§9.3) and the response carries a `layers` summary object. |
 | `PUT /api/diagrams/{id}/edits/{format}/{depth}` | Body `{ text }`. Saves the user's edited text for that view (text equal to the generated one clears the edit). `DELETE` on the same path discards it (Reset). Both return the view. |
 | `DELETE /api/diagrams/{id}` | Remove from history. |
 | `GET /api/health` | Liveness + version. |
@@ -185,12 +192,12 @@ diagrams(
 UNIQUE (repo_url, ref, commit_sha)
 
 edits(                                                -- the user's saved edits, one per view
-  diagram_id TEXT FK -> diagrams ON DELETE CASCADE, format TEXT ('c4'|'flowchart'),
+  diagram_id TEXT FK -> diagrams ON DELETE CASCADE, format TEXT ('c4'|'flowchart'),  -- 'layers' from M8
   depth INT, text TEXT,
   PRIMARY KEY (diagram_id, format, depth)
 )
 ```
-`PRAGMA user_version` is 2. A version-1 database (edits as two columns on `diagrams`) is migrated in place: those edits move to the `edits` table at depth 1. Other depths are rendered on demand from `model_json`, so only the auto-depth texts are stored.
+`PRAGMA user_version` is 2 (3 from M8, which widens the `format` check to include `layers`; the migration only rebuilds the `edits` table). A version-1 database (edits as two columns on `diagrams`) is migrated in place: those edits move to the `edits` table at depth 1. Other depths are rendered on demand from `model_json`, so only the auto-depth texts are stored.
 Clones go to `~/.cache/diagramma/repos/`. Generated diagrams do not depend on the cache afterwards.
 
 ### 5.4 Jobs
@@ -255,6 +262,9 @@ class Relation(BaseModel):
     label: str                   # "Uses", "Reads/writes", "Calls", ...
     technology: str | None
     strength: int                # number of underlying import edges
+    evidence: list[Literal["import","compose","manifest","env"]]
+                                 # what the edge is based on; the Dependency graph (§9.3) uses
+                                 # only edges with "import", and merging edges unions this set
 
 class Model(BaseModel):
     system_name: str
@@ -338,6 +348,32 @@ Standard `flowchart LR` with one `subgraph` per container and **nested subgraphs
 - attaches edges that **cross a group boundary** to the sibling groups just below the common parent (across containers and to external systems: to the level-1 component), while edges inside a group keep file-level detail; parallel edges merge;
 - marks **hubs** (shared modules such as utils/config/core): a component with at least 8 dependents *and* at least 25% of all dependents is drawn once with a dashed border and "used by N", and its incoming edges are not drawn (a comment line lists them). Databases and other external systems are never hubs.
 
+### 9.3 Dependency graph (layered) — M8, planned
+
+The flowchart (§9.2) is a **structural map**: groups, folders, who is next to whom. The Dependency graph answers a different question: **in which direction does the code depend, and how many levels deep is that chain?** It orders the components into **layers** using the import statements only, so shared foundations sit at the bottom and entry points at the top. Edges point from the importer to what it imports.
+
+**Input.** The boxes at the chosen depth (the same roll-up as §9.2) plus external systems that some import references. Only relations whose `evidence` contains `import` are used. Compose `depends_on`, manifest and env-var evidence are weaker and would invent layers, so they are excluded; databases and queues reached only through them do not appear.
+
+**Algorithm** (pure and deterministic, `analysis/layering.py`; ties are always broken by id):
+1. **Break cycles by ordering, not by collapsing.** Order the nodes with the weighted Eades-Lin-Smyth greedy heuristic (weight = import count) so that dependents come first. An edge pointing against that order is an **upward edge**. Collapsing each strongly connected component into one node is wrong for real code: Django at package level is *one* component containing 15 of its 19 packages, which would erase the structure; ordering gives 10 layers with 34 upward edges out of 114.
+2. **Layer.** Over the remaining (forward) edges, layer 0 = depends on nothing; `layer(n) = 1 + max(layer(d))` over its dependencies `d`. Every forward edge therefore goes from a strictly higher layer to a strictly lower one. External systems are always layer 0.
+3. **Transitive reduction.** Omit a forward edge `A→C` when another path `A→…→C` exists (the dependency is still true, and it is implied). Measured on real repos: FastAPI template depth 2, 125 → 74 edges; Flask depth 2, 91 → 45; Django depth 1, 80 → 22.
+4. **Long edges.** A forward edge spanning more than `MAX_SPAN` layers (default 3, to be tuned in M8) is not drawn; each affected node shows "+N deeper". Long edges are what turn a layered drawing into a tangle (measured on the FastAPI template).
+5. **Upward edges are not drawn by default.** They are the cycle structure and would dominate the picture (Django: 34 red lines over 22 forward ones). Instead every endpoint shows "↑N", and the summary lists the strongest ones. A toggle to draw them is on the roadmap.
+6. **Hubs.** The §9.2 hub rule is applied after the reduction (which already removes most of their edges).
+
+**Output.** A `flowchart TB` whose text is the view:
+- one `subgraph` per layer, titled "Layer N", highest at the top, nodes side by side (`direction LR`), kept in order with invisible `~~~` links; plain top-down ranking without bands also layers correctly but gives no explicit layer labels;
+- nodes coloured by **container** (so a frontend/backend split is visible), name plus component technology, `×N` on edges with more than one import; external systems as cylinders in layer 0;
+- nodes with upward edges get a dashed border and "↑N"; hubs as in §9.2;
+- header comments give the counts below. Output is deterministic, copyable and editable like every other view; saved edits are per (`layers`, depth).
+
+**Summary** (the `layers` object of the view response): `layer_count`, `layer_sizes[]`, `nodes`, `edges_drawn`, `edges_transitive_omitted`, `edges_long_omitted`, `upward_edges`, `longest_chain` (= `layer_count`), `top_upward[]` (the 10 strongest: source, target, strength), `hubs`.
+
+**Scope limits for M8.** Whole system only (no per-container filter); only languages with import analysis (TS/JS, Python); one depth at a time.
+
+**Evidence the design rests on** (prototype on four real repos, depth in brackets): FastAPI template (2) 57 nodes / 125 edges, 10 layers, no cycles. Flask (2) 36 / 116, 14 layers, 25 upward edges. Django (1) 19 / 114, 10 layers, 34 upward edges, 22 forward edges after reduction. Layer bands with the unreduced edge set were unreadable; with reduction the forward edges read cleanly and the remaining clutter was long edges and upward edges, hence rules 4 and 5.
+
 ---
 
 ## 10. Project layout
@@ -360,10 +396,12 @@ diagramma/
         relations.py
         externals.py       # + catalogue.yaml
         reduce.py          # top-level cap/merge
-      render/view.py       # depth roll-up, grouped edges, hubs
+        layering.py        # (M8) cycle breaking, layers, reduction: pure functions
       render/
+        view.py            # depth roll-up, grouped edges, hubs
         c4.py
         flowchart.py
+        layers.py          # (M8) Dependency graph text
         escape.py
       models.py            # Pydantic model + API schemas
     tests/
@@ -381,15 +419,17 @@ diagramma/
 
 ## 11. First-build milestones and acceptance
 
-**Milestones**
-1. **Skeleton:** FastAPI health route, Vite app, Mermaid renders a hard-coded diagram, OpenAPI → TS type generation wired up.
-2. **Fetch & scan:** URL validation, clone, scanner, job + SSE progress visible in the UI.
-3. **Containers & externals:** manifest and docker-compose detection; container-level diagram end-to-end (input → render → copy).
-4. **Components & relations:** folder/role conventions and import graph for TS/JS and Python; both renderers.
-5. **History:** SQLite persistence, sidebar, reopen and delete.
-6. **Editor split view:** (can be built right after milestone 1, since it only needs text) resizable 1/3 : 2/3 split, fold states, live preview with error bar, save/reset of edits.
+**Milestones** (written M1, M2, … everywhere; status is tracked in `progress.md`)
+- **M1 Skeleton:** FastAPI health route, Vite app, Mermaid renders a hard-coded diagram, OpenAPI → TS type generation wired up.
+- **M2 Fetch & scan:** URL validation, clone, scanner, job + SSE progress visible in the UI.
+- **M3 Containers & externals:** manifest and docker-compose detection; container-level diagram end-to-end (input → render → copy).
+- **M4 Components & relations:** folder/role conventions and import graph for TS/JS and Python; both renderers.
+- **M5 History:** SQLite persistence, sidebar, reopen and delete.
+- **M6 Editor split view:** (can be built right after M1, since it only needs text) resizable 1/3 : 2/3 split, fold states, live preview with error bar, save/reset of edits.
+- **M7 Deeper components and a clearer view** (built): components as a tree with a Depth control, depth roll-up of relations, grouped edges and hubs in the flowchart, per-view edits, schema v2.
+- **M8 Dependency graph view** (planned, §9.3): relation provenance; layering with cycle breaking, transitive reduction and long-edge handling; the `layers` format in the views and edits endpoints; the Dependencies tab with its summary strip.
 
-**Acceptance (MVP)**
+**Acceptance (M1-M6, MVP)**
 1. Pasting a GitHub URL and pressing Generate shows progress and ends with a rendered whole-app diagram.
 2. Containers appear as boundaries with components inside; databases/externals use distinct symbols; cross-container relationships are present; no person elements.
 3. Copying the `.mmd` text and pasting it into an external Mermaid viewer renders the same diagram.
@@ -402,16 +442,27 @@ diagramma/
 7. Same commit + version produces byte-identical Mermaid text.
 8. An unsupported-language repo still yields a coarser valid diagram with a warning.
 
+**Acceptance (M7)**
+9. Components nest several levels deep; the Depth control switches levels; the default depth draws at most 60 boxes; every (format, depth) view has its own text, draft and saved edit, and edits survive a reload without leaking to other views.
+10. The flowchart stays readable on dense code: edges between groups attach to the groups, shared modules (hubs) are drawn once with a "used by N" count, and the header states how many were handled that way.
+
+**Acceptance (M8, Dependency graph)**
+11. The Dependencies tab shows a layered graph: layer numbers are shown, every drawn forward edge goes from a higher layer to a lower one, and external systems sit in layer 0.
+12. Cyclic code still layers: for a repo with import cycles (Flask, Django) the view shows layers, never collapses a large cycle into one node, reports the number of upward edges and lists the 10 strongest.
+13. Only import-derived edges are used: an edge supported only by compose, manifest or env evidence never appears.
+14. Readable and honest by default: no drawn forward edge spans more than `MAX_SPAN` layers; the summary states how many edges were omitted as transitive, as too long, and as upward; the text is deterministic, renders in the pinned Mermaid and in a second Mermaid version, and the view for Django at its default depth is computed in under one second.
+
 ---
 
 ## 12. Progressive roadmap (not in the first build)
 
 Roughly in the order I'd suggest:
 
-1. **Details panel:** click a component to see paths, role, technology, evidence and its incoming/outgoing relations (data already in the model).
+1. **Details panel:** click a component to see paths, role, technology, evidence and its incoming/outgoing relations (data already in the model). It would also list exactly who depends on a hub or on a layer, and the upward edges of the Dependency graph.
 2. **More languages:** Go, Java, C#, Ruby, Rust, PHP.
 3. **Smarter components:** import-graph community detection (Louvain) when folder conventions give nothing; framework markers (`@Controller`, Spring, Django apps, Rails).
-4. **Smarter readability:** hub nodes (logger/config) drawn once, weak-edge pruning, container-level fallback for huge repos.
+4. **Smarter readability:** weak-edge pruning, container-level fallback for huge repos; for the Dependency graph: a toggle to draw upward edges, strict layer alignment, and per-container filtering. (Hub nodes drawn once are done, §9.2.)
+   **Layer rules:** let the user forbid upward dependencies (or name allowed layer directions) and get a report of violations.
 5. **History upgrades:** rename, search, re-run button, compare two commits of the same repo.
 6. **Cancel jobs** and richer progress.
 7. **Export:** SVG/PNG download.
@@ -431,3 +482,6 @@ Roughly in the order I'd suggest:
 | "Component" boundaries are subjective | Folder conventions first, smarter clustering later |
 | Dynamic dependencies (DI, reflection, runtime URLs) are invisible to static analysis | Documented limitation; use docker-compose and framework hints where possible |
 | Python slowness on very large repos | Process pool, native tree-sitter; swap-out path noted in roadmap |
+| Mutually importing code (Django) collapses into one cycle | The Dependency graph orders nodes and reports upward edges instead of collapsing cycles (§9.3) |
+| Long edges and upward edges turn a layered drawing into a tangle | Transitive reduction, `MAX_SPAN`, upward edges summarised not drawn; tuned against four reference repos in M8 |
+| Layering is only as good as the import graph (aliases, dynamic imports are missed) | Known limits are documented; provenance (`evidence`) keeps weaker evidence out of this view |

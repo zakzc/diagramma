@@ -2,14 +2,16 @@
 
 Tracks implementation of the MVP described in [SPEC.md](SPEC.md) / [README.md](README.md).
 
+Milestones are named **M1, M2, …** (as in SPEC §11).
+
 **Legend:** `[ ]` todo · `[~]` in progress · `[x]` done · `[-]` dropped (add a reason)
 
-**Current milestone:** 7 (deeper components, clearer view) done on branch `deeper-components`, not yet pushed or merged. MVP (1-6) is in PR #1. Roadmap (SPEC §12) otherwise not started.
+**Current milestone:** M8 (Dependency graph view) is **specified (SPEC §9.3) but not started**. M7 (deeper components, clearer view) is done on branch `deeper-components`, committed locally and not yet pushed. M1-M6 are in PR #1. Roadmap (SPEC §12) otherwise not started.
 **Last updated:** 2026-11-19
 
 ---
 
-## Milestone 1 — Skeleton
+## M1 — Skeleton
 - [x] Repo scaffolding: `backend/` (uv, pyproject, ruff, pytest) and `frontend/` (Vite, React 18, TS strict, Tailwind)
 - [x] FastAPI app with `GET /api/health` (liveness + version)
 - [x] Vite dev proxy `/api` → `127.0.0.1:8787`
@@ -18,7 +20,7 @@ Tracks implementation of the MVP described in [SPEC.md](SPEC.md) / [README.md](R
 - [~] Frontend renders a hard-coded Mermaid C4 diagram (`securityLevel: "strict"`, raised limits)
 - [x] FastAPI serves built frontend (run mode)
 
-## Milestone 2 — Fetch & scan
+## M2 — Fetch & scan
 - [x] URL validation (`https://github.com/...` and `owner/repo`), `INVALID_URL`
 - [x] `git clone --depth 1` into `~/.cache/diagramma/repos/`, optional ref, optional `GITHUB_TOKEN`
 - [x] Error mapping: `REPO_NOT_FOUND`, `AUTH_REQUIRED`, `CLONE_FAILED`
@@ -27,7 +29,7 @@ Tracks implementation of the MVP described in [SPEC.md](SPEC.md) / [README.md](R
 - [x] `POST /api/diagrams` and `GET /api/jobs/{id}/events` (SSE)
 - [x] Frontend: RepoForm, ProgressPanel, SSE hook, readable errors
 
-## Milestone 3 — Containers & externals
+## M3 — Containers & externals
 - [x] docker-compose service detection
 - [x] Workspace / sub-manifest detection (`package.json`, `pnpm-workspace.yaml`, `pyproject.toml`, `requirements.txt`)
 - [x] Container kind classification; single-container fallback
@@ -36,7 +38,7 @@ Tracks implementation of the MVP described in [SPEC.md](SPEC.md) / [README.md](R
 - [x] End to end: input → render → copy `.mmd`
 - [-] `GET /api/diagrams/{id}/download` (removed after M3: copy replaces download)
 
-## Milestone 4 — Components & relations
+## M4 — Components & relations
 - [x] Component detection by folder convention + role mapping; "Core" grouping
 - [x] tree-sitter import extraction: TS/JS
 - [x] tree-sitter import extraction: Python
@@ -48,14 +50,14 @@ Tracks implementation of the MVP described in [SPEC.md](SPEC.md) / [README.md](R
 - [x] Unsupported-language fallback with warning
 - [x] Golden-file tests incl. determinism (byte-identical output)
 
-## Milestone 5 — History
+## M5 — History
 - [x] SQLite schema + `db.py` (SPEC §5.3)
 - [x] Reuse entry for same repo + ref + commit
 - [x] `GET /api/diagrams`, `GET /api/diagrams/{id}`, `DELETE /api/diagrams/{id}`
 - [x] Frontend HistoryList: reopen, delete, foldable sidebar
 
-## Milestone 6 — Editor split view
-(Can start right after milestone 1; only needs text.)
+## M6 — Editor split view
+(Can start right after M1; only needs text.)
 - [x] SplitLayout (custom, not `react-resizable-panels`, see decisions): 1/3 : 2/3 default, drag, double-click reset
 - [x] Fold states: split / code-only / diagram-only; last pane can't fold
 - [x] Persist layout in `localStorage`; stack vertically below ~900 px
@@ -68,7 +70,7 @@ Tracks implementation of the MVP described in [SPEC.md](SPEC.md) / [README.md](R
 - [x] Copy .mmd uses current editor text
 - [x] Light/dark follows system theme
 
-## Milestone 7 — Deeper components and a clearer view
+## M7 — Deeper components and a clearer view
 Requested after the MVP: components were only one level deep and dense diagrams were unreadable.
 - [x] Components as a tree (folders nested to 6 levels, pass-through folders merged, files as leaves for containers up to 300 files)
 - [x] Role inheritance down the tree; empty `__init__.py` files mapped (not drawn) so import edges survive
@@ -81,6 +83,20 @@ Requested after the MVP: components were only one level deep and dense diagrams 
 - [x] UI: Depth control, per-view drafts and edits, size/hub note, large-view warning, Flowchart as default tab
 - [x] Verified in a real browser on fastapi template, flask, typer and Django (all depths, edits scoped per depth across a reload)
 
+## M8 — Dependency graph view (layered)
+Specified in SPEC §9.3 (v0.8). **Planned, not started.** A layered graph built from import statements: foundations at the bottom, entry points on top, cycles reported instead of hidden. Order below is the suggested build order.
+- [ ] Relation provenance: an `evidence` set on every relation (`import`, `compose`, `manifest`, `env`), unioned through the depth roll-up, grouping and the top-level cap merge; model, goldens and tests updated (no behaviour change for existing views)
+- [ ] `analysis/layering.py` (pure functions): import-only graph at a depth (boxes plus externals that an import references)
+- [ ] Cycle breaking with the weighted Eades-Lin-Smyth ordering; upward edges reported, large cycles never collapsed
+- [ ] Layering by longest path over forward edges; externals in layer 0
+- [ ] Transitive reduction, long-edge omission (`MAX_SPAN` = 3, tune on the reference repos), hub marking after reduction, all with counts
+- [ ] Property tests: forward edges strictly decrease the layer; the forward set is acyclic; reduction preserves reachability; deterministic under input reordering; compose-only edges never appear
+- [ ] `render/layers.py`: layer subgraphs with invisible ordering links, container colours, "↑N" badges and dashed border for nodes with upward edges, cylinders for externals; golden files and a parse test with the pinned Mermaid
+- [ ] API: `layers` format in `GET …/views/…` and in the edits endpoints, a `layers` summary object (layer sizes, edges drawn / transitive omitted / long omitted, upward edges and the 10 strongest, longest chain); schema v3 (edits `format` check widened) with an in-place migration test
+- [ ] UI: a "Dependencies" tab, summary strip, list of the strongest upward dependencies; hook and workspace tests (per-view drafts and edits for `layers`)
+- [ ] Verify in a real browser on the FastAPI template, Flask, Typer and Django; check a second Mermaid version; Django default-depth view computed in under 1 s
+- [ ] Tune `MAX_SPAN` and the summary wording on those repos; update README (features, known limits) and SPEC if anything changed
+
 ## Cross-cutting
 - [x] Unified error shape `{ "error": { code, message } }`
 - [x] CORS limited to local frontend origin; bind `127.0.0.1`
@@ -88,7 +104,7 @@ Requested after the MVP: components were only one level deep and dense diagrams 
 - [x] Frontend Vitest/RTL tests (split layout, editor, history)
 - [x] README dev commands verified against reality
 
-## Acceptance (SPEC §11)
+## Acceptance (SPEC §11)  (1-10 met; 11-14 belong to M8)
 - [x] 1. URL → progress → rendered whole-app diagram
 - [x] 2. Containers as boundaries with components; distinct DB/external symbols; cross-container relations; no persons
 - [x] 3. Copied `.mmd` text renders in an external Mermaid viewer (checked with Mermaid 11.17.2 in a bare page, not a hosted viewer; the app pins 12.3.0)
@@ -100,6 +116,12 @@ Requested after the MVP: components were only one level deep and dense diagrams 
 - [x] 6. Re-submitting an unchanged repo reuses the entry
 - [x] 7. Same commit + version → byte-identical Mermaid
 - [x] 8. Unsupported-language repo yields coarser valid diagram + warning
+- [x] 9. (M7) Components nest; Depth control; default depth draws at most 60 boxes; edits are per (format, depth) and survive a reload without leaking
+- [x] 10. (M7) Dense code stays readable: grouped edges, hubs drawn once with "used by N", header says how many
+- [ ] 11. (M8) Dependencies tab shows a layered graph: layer numbers, every drawn forward edge goes from a higher to a lower layer, externals in layer 0
+- [ ] 12. (M8) Cyclic code still layers (Flask, Django): large cycles are never collapsed; the upward-edge count and the 10 strongest are shown
+- [ ] 13. (M8) Only import-derived edges are used; compose/manifest/env-only edges never appear
+- [ ] 14. (M8) Readable and honest by default: no drawn forward edge spans more than `MAX_SPAN` layers; the summary states what was omitted; deterministic; parses in two Mermaid versions; Django default view computed in under 1 s
 
 ---
 
@@ -107,17 +129,25 @@ Requested after the MVP: components were only one level deep and dense diagrams 
 
 | Date | Note |
 |---|---|
-| 2026-11-19 | Milestone 7 (branch `deeper-components`): nested components, depth control, grouped edges, hubs, per-depth edits, schema v2 with migration. 152 backend and 71 frontend tests pass; verified in a real browser on four repos. |
+| 2026-11-19 | Docs: milestones renamed M1…M7; **M8 (Dependency graph view) specified** in SPEC v0.8 (§9.3, API, model, acceptance 11-14, risks) and planned here with a build-order checklist. Design checked with a throwaway prototype on four real repos (not committed). No code changed. |
+| 2026-11-19 | M7 (branch `deeper-components`): nested components, depth control, grouped edges, hubs, per-depth edits, schema v2 with migration. 152 backend and 71 frontend tests pass; verified in a real browser on four repos. |
 | 2026-11-19 | Final pass: error envelope everywhere, CORS and loopback-bind tests, `python -m app`, README commands verified clean, README/SPEC corrected, acceptance 3 checked with a second Mermaid version, 24 extra backend tests. 102 backend and 59 frontend tests pass. |
-| 2026-11-19 | Milestone 6 done: edit endpoints, split view with folds, resize and persistence, CodeMirror pane, live preview with error bar, Save/Reset, per-format edits, pan/zoom + Fit, system theme, narrow-screen stacking. Verified end to end in a real browser. 74 backend and 59 frontend tests pass. |
-| 2026-11-19 | Milestone 5 done: SQLite store, list/get/delete endpoints, reuse by repo+ref+commit via `ls-remote`, history sidebar with reopen, delete and fold. Download replaced by Copy. Verified live: generate, restart, history persists, case-insensitive re-submit reuses the entry in 0.85s, delete. 70 backend and 29 frontend tests pass. |
-| 2026-11-19 | Milestone 4 done: component detection, tree-sitter import graph (TS/JS, Python), component and container relations with role-pair labels, 60-component cap, `C4Component` and flowchart renderers with golden tests, flowchart toggle. Verified on `fastapi/full-stack-fastapi-template`, `tiangolo/typer`, `pallets/flask`, `django/django` (8s, 16 components). 55 backend and 21 frontend tests pass; both golden diagrams parse with the pinned mermaid. |
-| 2026-11-19 | Milestone 3 done: compose/workspace/manifest container detection, catalogue-based externals, container relations, `C4Container` renderer with golden test, in-memory store, diagram/download endpoints, diagram pane with download and copy. Verified on real repos (`fastapi/full-stack-fastapi-template`, `tiangolo/typer`). 42 backend and 18 frontend tests pass; the golden output parses with the pinned mermaid. |
-| 2026-11-19 | Milestone 2 done: URL validation, git fetch with cache, scanner, job manager (spawn process pool) with SSE, form and progress UI. Verified against real GitHub (`octocat/Hello-World` -> NOTHING_DETECTED, missing repo -> error). 31 backend and 16 frontend tests pass. |
-| 2026-11-19 | Milestone 1 scaffolded: backend health + tests, Vite/React/Tailwind app, generated API types, run mode serves `dist`. Mermaid render not yet checked in a real browser. |
+| 2026-11-19 | M6 done: edit endpoints, split view with folds, resize and persistence, CodeMirror pane, live preview with error bar, Save/Reset, per-format edits, pan/zoom + Fit, system theme, narrow-screen stacking. Verified end to end in a real browser. 74 backend and 59 frontend tests pass. |
+| 2026-11-19 | M5 done: SQLite store, list/get/delete endpoints, reuse by repo+ref+commit via `ls-remote`, history sidebar with reopen, delete and fold. Download replaced by Copy. Verified live: generate, restart, history persists, case-insensitive re-submit reuses the entry in 0.85s, delete. 70 backend and 29 frontend tests pass. |
+| 2026-11-19 | M4 done: component detection, tree-sitter import graph (TS/JS, Python), component and container relations with role-pair labels, 60-component cap, `C4Component` and flowchart renderers with golden tests, flowchart toggle. Verified on `fastapi/full-stack-fastapi-template`, `tiangolo/typer`, `pallets/flask`, `django/django` (8s, 16 components). 55 backend and 21 frontend tests pass; both golden diagrams parse with the pinned mermaid. |
+| 2026-11-19 | M3 done: compose/workspace/manifest container detection, catalogue-based externals, container relations, `C4Container` renderer with golden test, in-memory store, diagram/download endpoints, diagram pane with download and copy. Verified on real repos (`fastapi/full-stack-fastapi-template`, `tiangolo/typer`). 42 backend and 18 frontend tests pass; the golden output parses with the pinned mermaid. |
+| 2026-11-19 | M2 done: URL validation, git fetch with cache, scanner, job manager (spawn process pool) with SSE, form and progress UI. Verified against real GitHub (`octocat/Hello-World` -> NOTHING_DETECTED, missing repo -> error). 31 backend and 16 frontend tests pass. |
+| 2026-11-19 | M1 scaffolded: backend health + tests, Vite/React/Tailwind app, generated API types, run mode serves `dist`. Mermaid render not yet checked in a real browser. |
 | 2026-11-19 | SPEC v0.4 written; README and progress tracker added. No code yet. |
 
 ## Decisions & open questions
+
+- M8 (planning, prototype on real data, nothing in the repo): **cycles are broken by ordering, not collapsed.** Django at package level is a single strongly connected component of 15 of 19 packages, so collapsing would erase its structure. A weighted greedy order gives 10 layers and 34 upward edges of 114.
+- M8: **transitive reduction is what makes it readable.** Forward edges after cycle breaking and reduction: FastAPI template (depth 2) 125 to 74, Flask (depth 2) 91 to 45, Django (depth 1) 80 to 22. FastAPI at depth 3 stays high (320 to 236), which is why long edges are also omitted.
+- M8: **upward edges are summarised, not drawn, by default.** With Django's 34 red lines over 22 forward ones the layering disappeared. They are shown as "↑N" on their endpoints and listed in the summary. A toggle is on the roadmap.
+- M8: **layer bands (a subgraph per layer plus invisible links) work in Mermaid** and give explicit "Layer N" labels; plain `flowchart TB` also ranks correctly but is unlabeled. Bands are the planned default. Risk: tall drawings for repos with many layers (Django depth 1 renders about 3,500px tall). To check in M8.
+- M8: relations need **provenance** (`evidence`): today import edges and the weaker compose/manifest/env fallback edges are merged, which would invent layers. This changes the model, so it is the first M8 item.
+- M8: the view is named "Dependency graph" in the docs and labelled **Dependencies** on the tab; its format id is `layers`. Open question for M8: whether the default `MAX_SPAN` of 3 is right (tune on the four reference repos).
 
 - M7: the leaf level is **files** for containers up to 300 source files and **folders** above that. Reason: a file-level model of a 3,000-file repo is large and no depth would be readable; folder level keeps Django at 228 components (analysed in 6.5s).
 - M7: edges are stored only between leaves. Any depth is computed on demand by rolling them up, so no re-analysis and no extra storage. Only the auto-depth texts are stored; other depths are rendered from `model_json` per request (milliseconds even for Django).
@@ -161,8 +191,8 @@ Requested after the MVP: components were only one level deep and dense diagrams 
 - M4: all ids (containers, components, externals) share one namespace so Mermaid ids cannot collide.
 - M4: the pipeline stores `mermaid_flowchart` too. The diagram pane has a minimal C4/Flowchart toggle and a "Show flowchart instead" offer when C4 fails to render. The full split view and editing stay in M6.
 
-- M3: no persistence yet. `app/store.py` is an in-memory `DiagramStore` with the interface milestone 5 will back with SQLite. The pipeline returns the record to the API process, which stores it, so `done` carries a real `diagramId` and `GET /api/diagrams/{id}` plus `/download` work now. Diagrams are lost on restart until M5.
-- M3: with no components yet, `render_c4` emits a `C4Container` diagram (Container / ContainerDb / ContainerQueue / System_Ext). Milestone 4 switches to `C4Component` with `Container_Boundary` once components exist. `mermaid_flowchart` is null until M4 (download returns `FORMAT_UNAVAILABLE`).
+- M3: no persistence yet. `app/store.py` is an in-memory `DiagramStore` with the interface M5 will back with SQLite. The pipeline returns the record to the API process, which stores it, so `done` carries a real `diagramId` and `GET /api/diagrams/{id}` plus `/download` work now. Diagrams are lost on restart until M5.
+- M3: with no components yet, `render_c4` emits a `C4Container` diagram (Container / ContainerDb / ContainerQueue / System_Ext). M4 switches to `C4Component` with `Container_Boundary` once components exist. `mermaid_flowchart` is null until M4 (download returns `FORMAT_UNAVAILABLE`).
 - M3: the header comment uses the commit date, not the current time, so output stays byte-identical for the same commit and version (SPEC §9.1 says "date"; acceptance 7 needs determinism).
 - M3: `Container` gained an `evidence` field (not in SPEC §7), so containers keep evidence like every other element.
 - M3: docker-compose `build` with `context: .` and `dockerfile: sub/Dockerfile` maps the service to `sub/` only if that folder has a manifest or source. Otherwise the context is kept.
@@ -170,7 +200,7 @@ Requested after the MVP: components were only one level deep and dense diagrams 
 - M3: relations from external compose services to containers (for example a proxy to the web app) are not drawn. Only containers pointing at externals are.
 - M3: `npm run gen:api` now dumps the schema with `backend/scripts/dump_openapi.py`, so no running server is needed. Response models mark defaulted fields as required so the TS types are not all optional.
 
-- M2: the pipeline ends after the scan. The `done` event carries a scan summary with `diagramId: null` until milestone 5 adds persistence.
+- M2: the pipeline ends after the scan. The `done` event carries a scan summary with `diagramId: null` until M5 adds persistence.
 - M2: clones use `git init` + `fetch --depth 1 origin <ref|HEAD>` + detached checkout, which handles branches, tags and SHAs the same way and refreshes cached clones. The token goes to git via `GIT_CONFIG_*` env vars (an `http.extraheader`), so it never appears in argv or the remote URL.
 - M2: GitHub answers "private" and "does not exist" the same way to anonymous clients, so a missing repo without `GITHUB_TOKEN` reports `AUTH_REQUIRED` ("not found or private"). With a token it reports `REPO_NOT_FOUND`.
 - M2: a timed-out job is reported as an error (`TIMEOUT`), but its worker process is not killed (a `ProcessPoolExecutor` limitation). The git timeout of 300s bounds the clone itself.
