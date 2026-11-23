@@ -1,7 +1,12 @@
 # Diagramma — Specification
 
-**Version:** 0.9
+**Version:** 0.10
 **Purpose:** A locally run web app. You paste a GitHub repo URL, the backend analyses the repo, and the frontend shows a C4-style **Component diagram** of the *entire application* as a Mermaid graph. Past diagrams are kept in a history list so you can reopen them.
+
+### Changes from v0.9
+- **New view: Imports (M9, §9.4), for React applications.** A fourth tab shows every JS/TS file of a React container as a box with an edge to each file it imports. Boxes are **colour- and shape-coded by what the file is**: entry point, page/route, component, hook, state/context, API/service layer, database access, util, types, config. External boxes are drawn for databases, third-party services (from the catalogue) and API-client packages (axios, react-query, swr, Apollo, ...). A colour legend with counts sits above the diagram.
+- The model gains `files` and `file_imports` (§7). Tool version 0.4.0, so diagrams made before are regenerated on the next submit; opening Imports on an old diagram answers `409 IMPORTS_UNAVAILABLE`, as does a repository with no React.
+- The view is file-level and has no depth: it always uses depth 1 in the views and edits endpoints, and the UI hides the Depth control on this tab.
 
 ### Changes from v0.8
 - **M8 is built, in the simpler form.** The Dependencies tab, the `layers` format (views and edits), relation provenance (`evidence`), tool version 0.3.0 and schema v3 are implemented (§9.3). What was deliberately *not* built, and is listed in the roadmap: **layer bands** (a subgraph per layer: explicit "Layer N" titles, but much taller drawings), **hub marking** in this view, drawing upward edges on demand, and per-container filtering. The view is a plain top-down `flowchart TB` with the layer number and a colour per layer on every box.
@@ -275,7 +280,16 @@ class Model(BaseModel):
     containers: list[Container]
     externals: list[External]
     relations: list[Relation]
+    files: list[SourceFile]      # M9: JS/TS files of React containers (else empty)
+    file_imports: list[FileImport]
     warnings: list[str]
+
+class SourceFile(BaseModel):     # M9, §9.4
+    id: str; path: str; name: str; container: str; loc: int
+    kind: Literal["entry","page","component","hook","state","api","db","util","types","config"]
+    packages: list[str]          # bare npm packages imported
+class FileImport(BaseModel):
+    source: str; target: str; count: int   # target: a file id, or an external system/database id
 ```
 
 The model is stored with each diagram and exposed through the API (and the generated TS types), so later features such as a details panel need no re-analysis.
@@ -351,6 +365,29 @@ Standard `flowchart LR` with one `subgraph` per container and **nested subgraphs
 - draws **edge thickness** from the number of imports (1 = default, +1px per doubling, max 7px) and prints `×N` for N > 1; the default label "Uses" is not printed, other labels and technologies are;
 - attaches edges that **cross a group boundary** to the sibling groups just below the common parent (across containers and to external systems: to the level-1 component), while edges inside a group keep file-level detail; parallel edges merge;
 - marks **hubs** (shared modules such as utils/config/core): a component with at least 8 dependents *and* at least 25% of all dependents is drawn once with a dashed border and "used by N", and its incoming edges are not drawn (a comment line lists them). Databases and other external systems are never hubs.
+
+### 9.4 Imports (React file graph) — M9, built
+
+A `flowchart LR`, built only from import statements, for containers that are React apps (`react`, `react-dom`, `react-native`, `next` or `preact` declared in the manifest or imported by a file; other containers of a monorepo are left out). One box per file that imports or is imported, grouped in a subgraph per top-level folder under `src/`.
+
+**File kinds** (first rule that matches wins; heuristics on path, name and content, `analysis/filekind.py`):
+
+| Kind | Colour | Shape | Rule |
+|---|---|---|---|
+| Entry point | orange | circle | calls `createRoot`/`hydrateRoot`/`ReactDOM.render`/`registerRootComponent` |
+| Page / route | pink | subroutine | JSX in `pages/`, `routes/`, `screens/`, `views/`, or Next `page`/`layout`/... |
+| State / context | purple | hexagon | `createContext`, `createSlice`, `configureStore`, `createStore`; or a state library (zustand, jotai, redux, ...) in a file without JSX |
+| Hook | green | stadium | exports `useXxx` (and has no JSX, or is itself named `useXxx`) |
+| Component | blue | rectangle | contains JSX |
+| Types | light grey | rectangle | `types/` folder or a file named `types` |
+| Database access | red | cylinder | imports a catalogue database, or lives in `db/`, `prisma/`, `repositories/`, ... |
+| API / service layer | yellow | parallelogram | imports an API-client package, calls `fetch`/`XMLHttpRequest`/`WebSocket`, lives in `api/`, `services/`, ..., or is named `*Api`/`*Service`/`*Client`; Next `pages/api` and `route.ts` |
+| Config | blue-grey | rectangle | named or placed as config/constants/settings/env |
+| Util / lib | grey | rectangle | everything else |
+| External API / client | dark yellow | trapezoid | API-client package, or a catalogue service or queue |
+| External database | salmon | cylinder | catalogue database |
+
+**Noise control.** A file imported by at least 8 others and 25% of all importers (the same rule as the flowchart's hubs) is drawn once with a dashed border and "used by N" instead of with its incoming edges; files with no import link are counted, not drawn; other npm packages (react, router, UI kits) are counted, not drawn. The legend strip reports all three. Colours come from the backend (`legend`), so the Mermaid text and the legend cannot drift apart.
 
 ### 9.3 Dependency graph (layered) — M8, built (simplified)
 
@@ -431,6 +468,7 @@ diagramma/
 - **M5 History:** SQLite persistence, sidebar, reopen and delete.
 - **M6 Editor split view:** (can be built right after M1, since it only needs text) resizable 1/3 : 2/3 split, fold states, live preview with error bar, save/reset of edits.
 - **M7 Deeper components and a clearer view** (built): components as a tree with a Depth control, depth roll-up of relations, grouped edges and hubs in the flowchart, per-view edits, schema v2.
+- **M9 Imports view** (built, §9.4): React file model (`files`, `file_imports`) and file-kind classifier; the `imports` format; the Imports tab with a colour legend.
 - **M8 Dependency graph view** (built in a simpler form, §9.3): relation provenance; layering with cycle breaking, transitive reduction and long-edge handling; the `layers` format in the views and edits endpoints; the Dependencies tab with its summary strip.
 
 **Acceptance (M1-M6, MVP)**

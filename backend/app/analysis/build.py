@@ -6,6 +6,7 @@ from pathlib import Path
 from app.analysis.components import detect_components
 from app.analysis.containers import Detected, detect_containers
 from app.analysis.externals import detect_externals
+from app.analysis.files import build_file_model
 from app.analysis.graph import build_graph
 from app.analysis.manifests import ComposeService, parse_compose
 from app.analysis.reduce import reduce_components
@@ -72,6 +73,7 @@ def build_model(root: Path, scan: ScanResult, system_name: str) -> Model:
     graph = build_graph(root, scan, detected, file_comp, ext)
     if graph.parse_failures:
         warnings.append(f"Could not parse imports in {graph.parse_failures} file(s).")
+    files, file_imports = build_file_model(root, scan, detected, file_comp, graph, ext, used)
     relations = component_relations(
         detected, ext, graph, file_comp, container_relations(detected, ext)
     )
@@ -94,6 +96,8 @@ def build_model(root: Path, scan: ScanResult, system_name: str) -> Model:
         containers=[d.container for d in detected],
         externals=ext.externals,
         relations=relations,
+        files=files,
+        file_imports=file_imports,
         warnings=warnings,
     )
     reduce_components(model)

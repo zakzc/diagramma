@@ -59,11 +59,36 @@ class Relation(Base):
     evidence: list[Literal["import", "compose", "manifest", "env"]] = Field(default_factory=list)
 
 
+FileKind = Literal[
+    "entry", "page", "component", "hook", "state", "api", "db", "util", "types", "config"
+]
+
+
+class SourceFile(Base):
+    """A JS/TS source file of a React container, classified for the Imports view (SPEC §9.4)."""
+
+    id: str
+    path: str
+    name: str  # display name: file name without extension (the folder for `index`)
+    kind: FileKind
+    container: str  # container id
+    loc: int = 0
+    packages: list[str] = Field(default_factory=list)  # bare npm packages it imports
+
+
+class FileImport(Base):
+    source: str  # file id
+    target: str  # file id, or the id of an external system / database
+    count: int = 1  # import statements
+
+
 class Model(Base):
     system_name: str
     containers: list[Container] = Field(default_factory=list)
     externals: list[External] = Field(default_factory=list)
     relations: list[Relation] = Field(default_factory=list)
+    files: list[SourceFile] = Field(default_factory=list)  # React containers only; else empty
+    file_imports: list[FileImport] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -93,7 +118,7 @@ class DiagramCreated(BaseModel):
     diagramId: str | None = None
 
 
-ViewFormat = Literal["c4", "flowchart", "layers"]
+ViewFormat = Literal["c4", "flowchart", "layers", "imports"]
 
 
 class SavedEdit(Base):
@@ -170,6 +195,26 @@ class LayersSummary(Base):
     top_upward: list[UpwardEdge]  # the strongest few
 
 
+class LegendItem(Base):
+    kind: str  # a FileKind, or "ext_api" / "ext_db" for external nodes
+    label: str
+    color: str  # fill colour, as drawn in the Mermaid text
+    count: int  # nodes of this kind in the diagram
+
+
+class ImportsSummary(Base):
+    """What the Imports view shows and what it left out (SPEC §9.4)."""
+
+    files: int  # file boxes drawn
+    externals: int  # external boxes drawn (API clients and services, databases)
+    edges_drawn: int
+    hubs: int  # shared files drawn once, with a count, instead of with every incoming edge
+    hub_edges_omitted: int
+    isolated: int  # files with no import link, not drawn
+    packages_not_drawn: int  # other npm packages (react, router, UI kits, ...)
+    legend: list[LegendItem]
+
+
 class DiagramView(Base):
     """One rendering of a diagram: a format at a depth, plus the user's saved edit if any."""
 
@@ -181,3 +226,4 @@ class DiagramView(Base):
     edges: int  # relations drawn at this depth
     hubs: int = 0  # shared components drawn once instead of with all their incoming edges
     layers: LayersSummary | None = None  # only for the Dependency graph (format "layers")
+    imports: ImportsSummary | None = None  # only for the Imports view (format "imports")

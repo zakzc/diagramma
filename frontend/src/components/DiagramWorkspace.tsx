@@ -5,6 +5,7 @@ import { useDiagramEditor } from "../api/useDiagramEditor";
 import { useDebounced } from "../hooks/useDebounced";
 import CodePane from "./CodePane";
 import DepthControl from "./DepthControl";
+import ImportsStrip from "./ImportsStrip";
 import LayersStrip from "./LayersStrip";
 import DiagramPane from "./DiagramPane";
 import SplitLayout from "./SplitLayout";
@@ -25,7 +26,7 @@ function Editor({ d }: { d: DiagramRecord }) {
   const ed = useDiagramEditor(d);
   const [renderError, setRenderError] = useState<string | null>(null);
   // The diagram follows the editor after a short pause; switching tab/diagram applies at once.
-  const viewKey = `${d.id}:${ed.format}:${ed.depth}`;
+  const viewKey = `${d.id}:${ed.format}:${ed.format === "imports" ? 1 : ed.depth}`;
   // A new view (or a view finishing its load) applies at once; only typing is debounced.
   const renderText = useDebounced(ed.text, RENDER_DEBOUNCE_MS, `${viewKey}:${ed.loading}`);
 
@@ -60,22 +61,24 @@ function Editor({ d }: { d: DiagramRecord }) {
           {d.commit_sha.slice(0, 7)} · {d.container_count} containers · {d.component_count} components ·{" "}
           {d.model.externals.length} external
         </span>
-        <DepthControl
-          depth={ed.depth}
-          max={ed.maxDepth}
-          auto={ed.autoDepth}
-          disabled={ed.loading}
-          onChange={(n) => {
-            ed.setDepth(n);
-            setRenderError(null);
-          }}
-        />
+        {ed.format !== "imports" && (
+          <DepthControl
+            depth={ed.depth}
+            max={ed.maxDepth}
+            auto={ed.autoDepth}
+            disabled={ed.loading}
+            onChange={(n) => {
+              ed.setDepth(n);
+              setRenderError(null);
+            }}
+          />
+        )}
         <span className="text-xs text-slate-500" data-testid="view-size">
           {ed.loading
             ? "loading…"
             : ed.loadError
               ? "this view is not available"
-              : `showing ${ed.nodes} components · ${ed.edges} relations`}
+              : `showing ${ed.nodes} ${ed.format === "imports" ? "files" : "components"} · ${ed.edges} ${ed.format === "imports" ? "imports" : "relations"}`}
         </span>
         {!ed.loading && ed.hubs > 0 && (
           <span
@@ -88,6 +91,7 @@ function Editor({ d }: { d: DiagramRecord }) {
         )}
       </div>
       {ed.layers && <LayersStrip s={ed.layers} />}
+      {ed.imports && <ImportsStrip s={ed.imports} />}
       {large && !ed.loading && (
         <div className="border-b bg-amber-50 px-4 py-1 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
           This view has {ed.nodes} components and may be slow and hard to read. Try a lower depth.
@@ -148,6 +152,11 @@ function Editor({ d }: { d: DiagramRecord }) {
                     "layers",
                     "Dependencies",
                     "Layered dependency graph from import statements: importers above, what they import below",
+                  )}
+                  {tab(
+                    "imports",
+                    "Imports",
+                    "React apps: every file with what it imports, coloured by kind (component, hook, API, database, ...)",
                   )}
                 </div>
               ),

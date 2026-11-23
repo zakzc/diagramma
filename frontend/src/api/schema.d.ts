@@ -292,7 +292,7 @@ export interface components {
              * Format
              * @enum {string}
              */
-            format: "c4" | "flowchart" | "layers";
+            format: "c4" | "flowchart" | "layers" | "imports";
             /** Depth */
             depth: number;
             /** Generated */
@@ -309,6 +309,7 @@ export interface components {
              */
             hubs: number;
             layers: components["schemas"]["LayersSummary"] | null;
+            imports: components["schemas"]["ImportsSummary"] | null;
         };
         /** EditBody */
         EditBody: {
@@ -342,6 +343,18 @@ export interface components {
             /** Evidence */
             evidence: string[];
         };
+        /** FileImport */
+        FileImport: {
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+            /**
+             * Count
+             * @default 1
+             */
+            count: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -357,6 +370,28 @@ export interface components {
             status: "ok";
             /** Version */
             version: string;
+        };
+        /**
+         * ImportsSummary
+         * @description What the Imports view shows and what it left out (SPEC §9.4).
+         */
+        ImportsSummary: {
+            /** Files */
+            files: number;
+            /** Externals */
+            externals: number;
+            /** Edges Drawn */
+            edges_drawn: number;
+            /** Hubs */
+            hubs: number;
+            /** Hub Edges Omitted */
+            hub_edges_omitted: number;
+            /** Isolated */
+            isolated: number;
+            /** Packages Not Drawn */
+            packages_not_drawn: number;
+            /** Legend */
+            legend: components["schemas"]["LegendItem"][];
         };
         /**
          * LayersSummary
@@ -386,6 +421,17 @@ export interface components {
             /** Top Upward */
             top_upward: components["schemas"]["UpwardEdge"][];
         };
+        /** LegendItem */
+        LegendItem: {
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Color */
+            color: string;
+            /** Count */
+            count: number;
+        };
         /** Model */
         Model: {
             /** System Name */
@@ -396,6 +442,10 @@ export interface components {
             externals: components["schemas"]["External"][];
             /** Relations */
             relations: components["schemas"]["Relation"][];
+            /** Files */
+            files: components["schemas"]["SourceFile"][];
+            /** File Imports */
+            file_imports: components["schemas"]["FileImport"][];
             /** Warnings */
             warnings: string[];
         };
@@ -426,9 +476,35 @@ export interface components {
              * Format
              * @enum {string}
              */
-            format: "c4" | "flowchart" | "layers";
+            format: "c4" | "flowchart" | "layers" | "imports";
             /** Depth */
             depth: number;
+        };
+        /**
+         * SourceFile
+         * @description A JS/TS source file of a React container, classified for the Imports view (SPEC §9.4).
+         */
+        SourceFile: {
+            /** Id */
+            id: string;
+            /** Path */
+            path: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "entry" | "page" | "component" | "hook" | "state" | "api" | "db" | "util" | "types" | "config";
+            /** Container */
+            container: string;
+            /**
+             * Loc
+             * @default 0
+             */
+            loc: number;
+            /** Packages */
+            packages: string[];
         };
         /** UpwardEdge */
         UpwardEdge: {
@@ -667,7 +743,7 @@ export interface operations {
             header?: never;
             path: {
                 diagram_id: string;
-                format: "c4" | "flowchart" | "layers";
+                format: "c4" | "flowchart" | "layers" | "imports";
                 depth: number;
             };
             cookie?: never;
@@ -709,7 +785,7 @@ export interface operations {
             header?: never;
             path: {
                 diagram_id: string;
-                format: "c4" | "flowchart" | "layers";
+                format: "c4" | "flowchart" | "layers" | "imports";
                 depth: number;
             };
             cookie?: never;
@@ -755,7 +831,7 @@ export interface operations {
             header?: never;
             path: {
                 diagram_id: string;
-                format: "c4" | "flowchart" | "layers";
+                format: "c4" | "flowchart" | "layers" | "imports";
                 depth: number;
             };
             cookie?: never;

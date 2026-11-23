@@ -17,7 +17,10 @@ import {
 export function useDiagramEditor(d: DiagramRecord) {
   const qc = useQueryClient();
   const [format, setFormat] = useState<EditFormat>("flowchart");
-  const [depth, setDepthRaw] = useState(d.auto_depth);
+  const [chosenDepth, setDepthRaw] = useState(d.auto_depth);
+  // The Imports view draws files and has no depth: it always lives at depth 1, so its edit and
+  // draft do not depend on the depth chosen for the other views.
+  const depth = format === "imports" ? 1 : chosenDepth;
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const key = `${format}:${depth}`;
 
@@ -69,7 +72,7 @@ export function useDiagramEditor(d: DiagramRecord) {
   return {
     format,
     setFormat,
-    depth,
+    depth: chosenDepth,
     setDepth: (n: number) => setDepthRaw(Math.min(d.max_depth, Math.max(1, Math.round(n)))),
     maxDepth: d.max_depth,
     autoDepth: d.auto_depth,
@@ -81,6 +84,7 @@ export function useDiagramEditor(d: DiagramRecord) {
     edges: view?.edges ?? 0,
     hubs: view?.hubs ?? 0,
     layers: stale ? null : (view?.layers ?? null), // only for the Dependency graph
+    imports: stale ? null : (view?.imports ?? null), // only for the Imports view
     text,
     setText,
     generated,

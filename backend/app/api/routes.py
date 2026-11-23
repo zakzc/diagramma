@@ -19,11 +19,13 @@ from app.models import (
     EditBody,
     ErrorResponse,
     Health,
+    ImportsSummary,
     LayersSummary,
     ViewFormat,
 )
 from app.render.c4 import RenderMeta, render_c4
 from app.render.flowchart import drawn_relations, render_flowchart
+from app.render.imports import analyze_imports, render_imports
 from app.render.layers import analyze_layers, render_layers
 from app.render.view import build_view
 
@@ -102,6 +104,7 @@ class Generated:
     edges: int  # edges drawn
     hubs: int = 0  # shared modules marked instead of wired (flowchart)
     layers: LayersSummary | None = None  # dependency graph only
+    imports: ImportsSummary | None = None  # imports view only
 
 
 def _generated(rec: DiagramRecord, fmt: Format, depth: int) -> Generated:
@@ -116,6 +119,16 @@ def _generated(rec: DiagramRecord, fmt: Format, depth: int) -> Generated:
         text = render_layers(rec.model, meta, depth, analysis)
         s = analysis.summary
         return Generated(text, s.nodes, s.edges_drawn, layers=s)
+    if fmt == "imports":  # one box per file of a React app; independent of depth, see SPEC §9.4
+        ia = analyze_imports(rec.model)
+        text = render_imports(rec.model, meta, ia)
+        return Generated(
+            text,
+            ia.summary.files + ia.summary.externals,
+            ia.summary.edges_drawn,
+            ia.summary.hubs,
+            imports=ia.summary,
+        )
     view = build_view(rec.model, depth)
     if fmt == "flowchart":  # grouped edges, shared modules marked instead of wired
         edges, hubs = drawn_relations(view)
@@ -138,6 +151,7 @@ def _view(request: Request, diagram_id: str, fmt: Format, depth: int) -> Diagram
         edges=g.edges,
         hubs=g.hubs,
         layers=g.layers,
+        imports=g.imports,
     )
 
 

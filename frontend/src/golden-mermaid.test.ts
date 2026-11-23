@@ -19,6 +19,7 @@ describe.skipIf(!existsSync(dir))("backend golden diagrams parse with the pinned
         "nested_layers_depth1.mmd",
         "nested_layers_depth3.mmd",
         "cyclic_layers_depth2.mmd",
+        "react_imports.mmd",
       ]),
     );
   });

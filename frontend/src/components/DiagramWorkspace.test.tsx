@@ -29,11 +29,20 @@ type Layers = {
 type View = {
   generated: string; edited: string | null; nodes: number; edges: number; hubs?: number;
   layers?: Layers | null;
+  imports?: unknown;
 };
 const LAYERS: Layers = {
   layer_count: 5, layer_sizes: [4, 1, 2, 2, 1], nodes: 10, edges_drawn: 9,
   edges_transitive_omitted: 3, edges_long_omitted: 1, max_span: 3, upward_edges: 2,
   longest_chain: 5, isolated: 4, top_upward: [{ source: "Alpha", target: "Beta", strength: 7 }],
+};
+const IMPORTS = {
+  files: 19, externals: 2, edges_drawn: 32, hubs: 1, hub_edges_omitted: 9, isolated: 4,
+  packages_not_drawn: 8,
+  legend: [
+    { kind: "component", label: "Component", color: "#C9DEFA", count: 12 },
+    { kind: "hook", label: "Hook", color: "#CBEFD3", count: 4 },
+  ],
 };
 let failFormats: string[] = [];
 let record: Record<string, unknown>;
@@ -55,6 +64,7 @@ const viewFor = (format: string, depth: number): View =>
     nodes: depth * 10,
     edges: depth * 12,
     layers: format === "layers" ? LAYERS : null,
+    imports: format === "imports" ? IMPORTS : null,
   });
 
 function installFetch() {
@@ -64,7 +74,7 @@ function installFetch() {
     vi.fn(async (url: string, init?: RequestInit) => {
       const method = init?.method ?? "GET";
       calls.push({ method, url, body: init?.body as string | undefined });
-      const m = /\/(views|edits)\/(c4|flowchart|layers)\/(\d+)$/.exec(url);
+      const m = /\/(views|edits)\/(c4|flowchart|layers|imports)\/(\d+)$/.exec(url);
       if (!m) return new Response(JSON.stringify(record));
       if (delay && m[1] === "views") await delay;
       const [, , format, d] = m;
@@ -364,4 +374,23 @@ test("a view that cannot be generated keeps the previous one on screen and the t
   await waitFor(() => expect(editor().value).toBe("c4 generated d2"));
   expect(editor().readOnly).toBe(false);
   expect(screen.queryByText(/Could not load this view/)).toBeNull();
+});
+
+test("the Imports tab shows a colour legend, has no depth, and keeps one edit across depths", async () => {
+  mount();
+  await ready();
+  expect(screen.queryByTestId("imports-strip")).toBeNull();
+  fireEvent.click(screen.getByRole("tab", { name: "Imports" }));
+  await waitFor(() => expect(editor().value).toBe("imports generated d1"));
+  expect(calls.some((c) => c.url === "/api/diagrams/d1/views/imports/1")).toBe(true);
+  const strip = screen.getByTestId("imports-strip");
+  expect(strip).toHaveTextContent("Component 12");
+  expect(strip).toHaveTextContent("Hook 4");
+  expect(strip).toHaveTextContent("4 files with no import link not drawn");
+  expect(strip).toHaveTextContent("1 shared file drawn once");
+  expect(screen.queryByRole("group", { name: "Depth" })).toBeNull();
+  expect(screen.getByTestId("view-size")).toHaveTextContent("showing 10 files · 12 imports");
+  fireEvent.click(screen.getByRole("tab", { name: "Flowchart" }));
+  await waitFor(() => expect(screen.queryByTestId("imports-strip")).toBeNull());
+  expect(screen.getByRole("group", { name: "Depth" })).toBeInTheDocument();
 });

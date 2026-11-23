@@ -83,6 +83,16 @@ Requested after the MVP: components were only one level deep and dense diagrams 
 - [x] UI: Depth control, per-view drafts and edits, size/hub note, large-view warning, Flowchart as default tab
 - [x] Verified in a real browser on fastapi template, flask, typer and Django (all depths, edits scoped per depth across a reload)
 
+## M9 — Imports view (React file graph)
+Specified in SPEC §9.4. A file-level import diagram for React apps (JS/TS), colour- and shape-coded by file kind.
+- [x] `analysis/filekind.py`: classifier (entry, page, state, hook, component, types, db, api, config, util) from path, name and content; `parse.read_js_file` adds JSX detection from the tree-sitter tree
+- [x] `analysis/files.py`: `Model.files` / `Model.file_imports`, only for containers that declare or import React; reuses the existing import resolution (relative, alias, `index`); tool version 0.4.0
+- [x] `render/imports.py`: `flowchart LR`, one subgraph per top-level folder, shapes and colours per kind, API-client packages and catalogue services/databases as external boxes, hubs drawn once ("used by N"), `×N` and thickness; colours come from the `legend` in the summary
+- [x] API: `imports` format (always depth 1) with an `imports` summary; `409 IMPORTS_UNAVAILABLE` for non-React repos and diagrams from before this version
+- [x] UI: an "Imports" tab, colour legend strip with counts and what was left out, Depth control hidden on this tab, one edit per diagram regardless of the depth chosen elsewhere
+- [x] Tests: classifier per kind, hubs, escaping, determinism, non-React and mixed monorepo, golden file also parsed by the pinned Mermaid; checked on this repo's own frontend
+- [-] Not built: tsconfig `paths`/`baseUrl` aliases (as in M4), per-folder collapsing for very large apps, Vue/Svelte/Angular
+
 ## M8 — Dependency graph view (layered)
 Specified in SPEC §9.3. **Built in a simpler form** (plain top-down layout; see the `[-]` items for what was deferred). A layered graph built from import statements: foundations at the bottom, entry points on top, cycles reported instead of hidden.
 - [x] Relation provenance: an `evidence` set on every relation (`import`, `compose`, `manifest`, `env`), unioned through the depth roll-up, grouping and the top-level cap merge (no change for existing views)

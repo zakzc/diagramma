@@ -98,3 +98,24 @@ def extract_imports(path: Path, rel_path: str, language: str) -> list[ImportRef]
         return []
     root = _parser(grammar_for(rel_path, language)).parse(source).root_node
     return _py_imports(root) if language == "python" else _js_imports(root)
+
+
+_JSX_NODES = {"jsx_element", "jsx_self_closing_element", "jsx_fragment"}
+
+
+@dataclass(frozen=True)
+class JsFile:
+    imports: list[ImportRef]
+    has_jsx: bool
+    text: str
+
+
+def read_js_file(path: Path, rel_path: str, language: str) -> JsFile:
+    """Imports, whether the file contains JSX, and its source text (for the Imports view)."""
+    try:
+        source = path.read_bytes()
+    except OSError:
+        return JsFile([], False, "")
+    root = _parser(grammar_for(rel_path, language)).parse(source).root_node
+    has_jsx = any(n.type in _JSX_NODES for n in _walk(root))
+    return JsFile(_js_imports(root), has_jsx, source.decode("utf-8", "replace"))

@@ -58,8 +58,9 @@ export async function deleteDiagram(id: string): Promise<void> {
   if (!r.ok) throw await failure(r);
 }
 
-export type EditFormat = "c4" | "flowchart" | "layers";
+export type EditFormat = "c4" | "flowchart" | "layers" | "imports";
 export type LayersSummary = components["schemas"]["LayersSummary"];
+export type ImportsSummary = components["schemas"]["ImportsSummary"];
 export type DiagramView = components["schemas"]["DiagramView"];
 
 /** The diagram as `format` rolled up to `depth`, plus the saved edit for that exact view. */
