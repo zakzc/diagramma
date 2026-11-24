@@ -39,6 +39,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/fs/dirs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fs Dirs
+         * @description Sub-directories of `path` (default: the home folder), for the folder browser.
+         */
+        get: operations["fs_dirs_api_fs_dirs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}/events": {
         parameters: {
             query?: never;
@@ -187,12 +207,17 @@ export interface components {
             /** Evidence */
             evidence: string[];
         };
-        /** DiagramCreate */
+        /**
+         * DiagramCreate
+         * @description A GitHub repo (`url`, optional `ref`) or a local folder (`path`); exactly one.
+         */
         DiagramCreate: {
             /** Url */
-            url: string;
+            url?: string | null;
             /** Ref */
             ref?: string | null;
+            /** Path */
+            path?: string | null;
         };
         /**
          * DiagramCreated
@@ -256,6 +281,12 @@ export interface components {
             warnings: string[];
             /** Tool Version */
             tool_version: string;
+            /**
+             * Source
+             * @default github
+             * @enum {string}
+             */
+            source: "github" | "local";
         };
         /**
          * DiagramSummary
@@ -282,6 +313,12 @@ export interface components {
             component_count: number;
             /** Tool Version */
             tool_version: string;
+            /**
+             * Source
+             * @default github
+             * @enum {string}
+             */
+            source: "github" | "local";
         };
         /**
          * DiagramView
@@ -310,6 +347,29 @@ export interface components {
             hubs: number;
             layers: components["schemas"]["LayersSummary"] | null;
             imports: components["schemas"]["ImportsSummary"] | null;
+        };
+        /** DirEntry */
+        DirEntry: {
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+            /** Is Repo */
+            is_repo: boolean;
+        };
+        /**
+         * DirListing
+         * @description Sub-directories of a folder, for the folder browser (SPEC §5.6).
+         */
+        DirListing: {
+            /** Path */
+            path: string;
+            /** Parent */
+            parent: string | null;
+            /** Is Repo */
+            is_repo: boolean;
+            /** Dirs */
+            dirs: components["schemas"]["DirEntry"][];
         };
         /** EditBody */
         EditBody: {
@@ -601,6 +661,56 @@ export interface operations {
             };
             /** @description Bad Request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fs_dirs_api_fs_dirs_get: {
+        parameters: {
+            query?: {
+                path?: string | null;
+                hidden?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirListing"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

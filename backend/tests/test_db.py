@@ -36,7 +36,7 @@ def test_schema_matches_spec(tmp_path):
     assert cols == {
         "id", "repo_url", "owner", "name", "ref", "commit_sha", "commit_date", "created_at",
         "container_count", "component_count", "max_depth", "auto_depth", "mermaid_c4",
-        "mermaid_flowchart", "model_json", "warnings_json", "tool_version",
+        "mermaid_flowchart", "model_json", "warnings_json", "tool_version", "source",
     }  # fmt: skip
     assert {r[1] for r in con.execute("PRAGMA table_info(edits)")} == {
         "diagram_id",
@@ -44,7 +44,7 @@ def test_schema_matches_spec(tmp_path):
         "depth",
         "text",
     }
-    assert con.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert con.execute("PRAGMA user_version").fetchone()[0] == 4
 
 
 def test_same_repo_ref_commit_reuses_entry_case_insensitively(tmp_path):
@@ -142,7 +142,7 @@ def test_v1_database_is_migrated_in_place(tmp_path):
     assert s.get_edit("d1", "c4", 1) == "my c4 edit"  # moved to the edits table at depth 1
     assert s.get_edit("d1", "flowchart", 1) is None
     check = sqlite3.connect(path)
-    assert check.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert check.execute("PRAGMA user_version").fetchone()[0] == 4
     # a regeneration by the new release then works on the migrated table
     s.add(rec(repo_url="https://github.com/o/old", owner="o", name="old", commit_sha="a1",
               tool_version="0.2.0", max_depth=3, auto_depth=2))  # fmt: skip
@@ -210,6 +210,7 @@ def test_v2_database_is_migrated_to_v3_keeping_edits(tmp_path):
     s = DiagramStore(path)
     d = s.get("d1")
     assert (d.max_depth, d.auto_depth) == (3, 2)
+    assert d.source == "github"  # rows from before v4
     assert (
         s.get_edit("d1", "c4", 2) == "kept c4" and s.get_edit("d1", "flowchart", 3) == "kept flow"
     )
@@ -219,7 +220,7 @@ def test_v2_database_is_migrated_to_v3_keeping_edits(tmp_path):
         ("c4", 2), ("flowchart", 3), ("layers", 1),
     ]  # fmt: skip
     check = sqlite3.connect(path)
-    assert check.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert check.execute("PRAGMA user_version").fetchone()[0] == 4
     assert not check.execute("SELECT 1 FROM sqlite_master WHERE name = 'edits_v2'").fetchone()
     s.delete("d1")  # the foreign key still cascades after the rebuild
     assert check.execute("SELECT count(*) FROM edits").fetchone()[0] == 0

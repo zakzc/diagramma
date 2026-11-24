@@ -1,7 +1,11 @@
 # Diagramma — Specification
 
-**Version:** 0.10
-**Purpose:** A locally run web app. You paste a GitHub repo URL, the backend analyses the repo, and the frontend shows a C4-style **Component diagram** of the *entire application* as a Mermaid graph. Past diagrams are kept in a history list so you can reopen them.
+**Version:** 0.11
+**Purpose:** A locally run web app. You paste a GitHub repo URL **or give the path of a folder on your machine**, the backend analyses the repo, and the frontend shows a C4-style **Component diagram** of the *entire application* as a Mermaid graph. Past diagrams are kept in a history list so you can reopen them.
+
+### Changes from v0.10
+- **New input: a local folder (M10, §5.6).** Besides a GitHub URL, the user can give the absolute path of a repository already on disk. The folder is analysed in place (no clone, no copy, never written to). Everything after the fetch stage is unchanged, so all views and edits work the same. This promotes roadmap item 9 ("Local path input") into the build.
+- `POST /api/diagrams` accepts `{ path }` as an alternative to `{ url, ref? }` (§5.2); new error codes `INVALID_PATH` and `PATH_NOT_FOUND`. New read-only `GET /api/fs/dirs` powers a **folder browser** in the form. Diagrams gain a `source` field (`github` | `local`), tool version 0.5.0, schema v4. `.gitignore` is honoured. §5.5 safety is extended for local paths. Status: **built (M10)**; decisions and answers are in §5.6.
 
 ### Changes from v0.9
 - **New view: Imports (M9, §9.4), for React applications.** A fourth tab shows every JS/TS file of a React container as a box with an edge to each file it imports. Boxes are **colour- and shape-coded by what the file is**: entry point, page/route, component, hook, state/context, API/service layer, database access, util, types, config. External boxes are drawn for databases, third-party services (from the catalogue) and API-client packages (axios, react-query, swr, Apollo, ...). A colour legend with counts sits above the diagram.
@@ -48,8 +52,9 @@
 2. The diagram is a **C4 Component diagram** (https://c4model.com/diagrams/component) rendered with Mermaid, using the same or similar symbols.
 3. View it in-app and **copy the raw Mermaid (`.mmd`) text** to use in any other Mermaid viewer.
 4. Keep a **history** of generated diagrams and reopen them without re-analysing.
-5. Runs entirely on your machine. The only network use is `git clone` from GitHub.
-6. A **Dependency graph** view of the same repo: a layered graph built from import statements that shows what depends on what and which way the code flows (M8, §9.3).
+5. Runs entirely on your machine. The only network use is `git clone` from GitHub (none for a local folder).
+6. Analyse a **local folder** as well as a GitHub repo, with the same diagrams and history (M10, §5.6).
+7. A **Dependency graph** view of the same repo: a layered graph built from import statements that shows what depends on what and which way the code flows (M8, §9.3).
 
 ### Non-goals
 - Persons/actors in the diagram. Class-level detail. Runtime/dynamic analysis.
@@ -175,16 +180,17 @@ A top bar for input, a collapsible history sidebar, and below the bar a **horizo
 
 | Method & path | Purpose |
 |---|---|
-| `POST /api/diagrams` | Body `{ url, ref? }`. Creates a job; returns `{ jobId }`, or `{ diagramId }` if an identical repo+ref+commit already exists. |
+| `POST /api/diagrams` | Body `{ url, ref? }` **or** `{ path }` (not both; §5.6). Creates a job; returns `{ jobId }`, or `{ diagramId }` if an identical repo+ref+commit (for a folder: path+fingerprint) already exists. |
 | `GET /api/jobs/{jobId}/events` | SSE: `{stage, message}` events, then `done {diagramId}` or `error {code, message}`. |
 | `GET /api/diagrams` | History list (summary fields). |
 | `GET /api/diagrams/{id}` | Full record: both Mermaid texts, metadata, warnings. |
 | `GET /api/diagrams/{id}/views/{format}/{depth}` | One rendering: the generated text, the user's saved edit for that exact view (or null), and the number of boxes, edges and hubs drawn. `depth` is 1…`max_depth` (else `INVALID_DEPTH`). From M8, `format` may also be `layers` (§9.3) and the response carries a `layers` summary object. |
 | `PUT /api/diagrams/{id}/edits/{format}/{depth}` | Body `{ text }`. Saves the user's edited text for that view (text equal to the generated one clears the edit). `DELETE` on the same path discards it (Reset). Both return the view. |
 | `DELETE /api/diagrams/{id}` | Remove from history. |
+| `GET /api/fs/dirs?path=` | M10 folder browser: the sub-directories of `path` (default: the user's home), plus its parent and whether it looks like a repo (has `.git` or a manifest). Directories only, never file contents. Errors `INVALID_PATH` / `PATH_NOT_FOUND`. |
 | `GET /api/health` | Liveness + version. |
 
-Errors use one shape: `{ "error": { "code", "message" } }` with codes like `INVALID_URL`, `REPO_NOT_FOUND`, `AUTH_REQUIRED`, `CLONE_FAILED`, `NOTHING_DETECTED`.
+Errors use one shape: `{ "error": { "code", "message" } }` with codes like `INVALID_URL`, `REPO_NOT_FOUND`, `AUTH_REQUIRED`, `CLONE_FAILED`, `NOTHING_DETECTED`; for local folders `INVALID_PATH` (400: not absolute, not a directory, or both `url` and `path` given) and `PATH_NOT_FOUND` (404). Neither field given is `VALIDATION_ERROR`.
 
 ### 5.3 Persistence
 One SQLite file in the user data dir (`$DIAGRAMMA_DATA_DIR`, default `~/.local/share/diagramma/diagramma.db`). `ref` is stored as `''` when none was given and `repo_url` lowercased, so the UNIQUE constraint behaves:
@@ -214,21 +220,54 @@ In-process job registry plus a `ProcessPoolExecutor` (default 2 workers). One jo
 
 ### 5.5 Basic safety (trusted repos only)
 Because you only analyse your own or trusted repos, heavy sandboxing is out of scope. We keep simple hygiene:
-- Accept only `https://github.com/...` URLs (also prevents accidental `file://`/arbitrary-host clones).
+- Accept only `https://github.com/...` URLs (also prevents accidental `file://`/arbitrary-host clones). Local folders come only through the separate `path` field (§5.6), never through `url`.
 - Analysis is **static only**: never execute repo code or install its dependencies.
 - Bind to `127.0.0.1`; CORS limited to the local frontend origin.
 - Escape text placed into Mermaid so odd names cannot break the diagram.
 - Private repos: optional `GITHUB_TOKEN` read from the backend environment; never logged or returned.
+
+### 5.6 Local folder input (M10, built)
+
+**Goal.** Diagram a repository that is already on the machine, with no GitHub involved: private code, unpushed work, or a repo cloned elsewhere.
+
+**Input.** The body field `path`: an absolute path to a directory. The form offers a second mode (GitHub URL | Local folder). A browser cannot read a real path from its own folder picker, so the form has a path field plus a **folder browser** backed by `GET /api/fs/dirs` (§5.2): the user walks the directory tree from their home folder, or types or pastes a path, and picks a folder. `ref` does not apply to a folder and is hidden.
+
+**Fetch stage.** `clone_repo` is replaced by an "open local folder" step that validates the path and returns the same `ClonedRepo` shape (`path`, `commit_sha`, `commit_date`), so scan, detect, model and render are untouched. The stage event reads "Reading <folder>" instead of "Cloning". The folder is read in place and **never modified**: no checkout, no `.git` writes, no files created inside it.
+
+**Identity and reuse (SPEC §4.2 rule 6 and acceptance 7).** A diagram is keyed by `(repo_url, ref, commit_sha)`. For a folder: `repo_url` = `file://` + the resolved absolute path (lowercasing as for GitHub is not applied; paths are case-sensitive on most systems), `ref` = `''`, `owner` = `local`, `name` = the folder name. `commit_sha` holds a **content fingerprint** (decided, was open question 1: short SHA-256 over the sorted relative path, size and modification time of every scanned file), so an unchanged folder reuses its entry and an edited one makes a new entry. Touching a file therefore creates a new history entry; that is accepted. The header comment uses the fingerprint and no date, so the same folder content and tool version still give byte-identical text.
+
+**Source field and versioning.** `DiagramRecord` and `DiagramSummary` gain `source: "github" | "local"`, stored in a new `diagrams.source` column (`TEXT NOT NULL DEFAULT 'github'`; schema v4, migrated in place, existing rows become `github`). `app.__version__` becomes 0.5.0, so a GitHub diagram made earlier is regenerated on its next submit, as in earlier bumps. The stored model itself does not change.
+
+**Ignore rules.** The scanner's existing ignores apply, and so does the folder's `.gitignore`. For a git repository the file list comes from `git ls-files --cached --others --exclude-standard` (git's own rules, including nested and global ignores); the existing ignores still apply on top. Without git, see open question 7.
+
+**History label.** A local entry shows the folder name, with the full path as its tooltip and as a second line under the title in the diagram header, so the user always sees which code a diagram shows. GitHub entries are unchanged.
+
+**Safety (extends §5.5).** Any readable folder is allowed (decided, was open question 6). The path is resolved with `Path.resolve()`; it must exist and be a directory. The folder browser lists directory names only and never reads file contents; it is the one place the API reveals the file system, which is acceptable only because the API is loopback-only. Symlinks inside the folder are not followed (the scanner already skips them). Analysis stays static: no code is executed and no dependencies are installed. The API still binds `127.0.0.1`, so only the user's own machine can ask it to read a path. `GITHUB_TOKEN` is not used.
+
+**Reuse.** There is no pre-job shortcut for a folder (a GitHub repo is compared by `git ls-remote` without cloning): the job scans and fingerprints, and the store's upsert returns the existing entry, so no duplicate is created, but the analysis still runs.
+
+**Jobs.** `RepoSpec` gains an optional `path`; the job key for a folder is its resolved path, so "one job at a time per repo" holds.
+
+**Out of scope.** Analysing a git ref of a local repo, watching the folder for changes, remembering recent folders.
+
+**Decisions** (answers to the first six open questions): 1 content fingerprint; 2 honour `.gitignore`; 3 folder name as the label, full path as tooltip and header line (chosen so the user can always tell which code is shown; change if wanted); 4 add the `source` field; 5 folder browser; 6 any folder.
+
+**Open questions** (numbered; answer by number)
+7. **`.gitignore` without git.** Built as: only the scanner's built-in ignores for a folder that has no `.git` of its own (no `pathspec` parser was added). Revisit if wanted.
+8. **Browser start and hidden folders.** Built as: starts at the home folder (or the typed path); dot-folders hidden behind a "Hidden" checkbox.
+9. **Symlinked folders.** Built as: shown and selectable, resolved when submitted.
+
+(7-9 were not answered by the user; the defaults above were chosen so M10 could be built.)
 
 ---
 
 ## 6. Analysis pipeline
 
 ```
-URL ─► Fetch ─► Scan ─► Detect ─► Model ─► Render ─► {c4, flowchart}
-       (clone)  (files) (containers, (graph)  (Mermaid text)
-                         components,
-                         relations,
+URL or ─► Fetch ─► Scan ─► Detect ─► Model ─► Render ─► {c4, flowchart}
+folder   (clone  (files) (containers, (graph)  (Mermaid text)
+          or             components,
+          open)          relations,
                          externals)
 ```
 
@@ -469,6 +508,7 @@ diagramma/
 - **M6 Editor split view:** (can be built right after M1, since it only needs text) resizable 1/3 : 2/3 split, fold states, live preview with error bar, save/reset of edits.
 - **M7 Deeper components and a clearer view** (built): components as a tree with a Depth control, depth roll-up of relations, grouped edges and hubs in the flowchart, per-view edits, schema v2.
 - **M9 Imports view** (built, §9.4): React file model (`files`, `file_imports`) and file-kind classifier; the `imports` format; the Imports tab with a colour legend.
+- **M10 Local folder input** (built, §5.6): `path` in `POST /api/diagrams`, open-local-folder fetch step, content fingerprint as identity, `.gitignore`, `source` field (schema v4, tool 0.5.0), folder browser endpoint and UI, form mode switch, `INVALID_PATH` / `PATH_NOT_FOUND`.
 - **M8 Dependency graph view** (built in a simpler form, §9.3): relation provenance; layering with cycle breaking, transitive reduction and long-edge handling; the `layers` format in the views and edits endpoints; the Dependencies tab with its summary strip.
 
 **Acceptance (M1-M6, MVP)**
@@ -494,6 +534,14 @@ diagramma/
 13. Only import-derived edges are used: an edge supported only by compose, manifest or env evidence never appears.
 14. Readable and honest by default: no drawn forward edge spans more than `MAX_SPAN` layers; the summary states how many edges were omitted as transitive, as too long, and as upward; the text is deterministic, renders in the pinned Mermaid and in a second Mermaid version, and the view for Django at its default depth is computed in under one second.
 
+**Acceptance (M10, Local folder)**
+15. Giving the absolute path of a folder on disk produces the same views (C4, flowchart, dependencies, imports where they apply), depth control, edits and history as a GitHub repo, with no network access.
+16. The folder is not modified: no file is created, changed or deleted in it (checked by comparing the tree before and after).
+17. A relative path, a path to a file, a missing path, and both `url` and `path` are refused with `INVALID_PATH` or `PATH_NOT_FOUND`, and the UI shows a readable message.
+18. Re-submitting an unchanged folder reuses its entry; changing a file creates a new one; the same content and tool version give byte-identical Mermaid text.
+19. Submitting a GitHub URL still works exactly as before, and `file://` URLs are still rejected in `url`.
+20. The folder browser lists only directories, can reach any readable folder from the home folder, and picking one fills the path; files matched by the folder's `.gitignore` do not appear in the diagram; a local entry shows its folder name and full path; older databases migrate to schema v4 with `source = 'github'`.
+
 ---
 
 ## 12. Progressive roadmap (not in the first build)
@@ -510,7 +558,7 @@ Roughly in the order I'd suggest:
 6. **Cancel jobs** and richer progress.
 7. **Export:** SVG/PNG download.
 8. **Per-repo overrides** (`diagramma.config.yaml`): rename, hide, merge, add components/externals/labels; later a UI to edit them.
-9. **Local path input** (analyse an already-cloned folder, no GitHub needed).
+9. ~~Local path input~~ moved into the build as M10 (§5.6). Left here as roadmap: analyse a git ref of a local repo, folder browser, recent folders.
 10. **Optional LLM enrichment** for names, descriptions and labels (opt-in).
 11. **Performance experiments** if Python becomes too slow on large repos (e.g. Rust/Go analysis module behind the same interface).
 
@@ -525,6 +573,7 @@ Roughly in the order I'd suggest:
 | "Component" boundaries are subjective | Folder conventions first, smarter clustering later |
 | Dynamic dependencies (DI, reflection, runtime URLs) are invisible to static analysis | Documented limitation; use docker-compose and framework hints where possible |
 | Python slowness on very large repos | Process pool, native tree-sitter; swap-out path noted in roadmap |
+| A local path exposes any readable folder to the analyser | API is loopback-only; read-only, static analysis; symlinks not followed; path must be an existing directory; the folder browser lists names only (§5.6) |
 | Mutually importing code (Django) collapses into one cycle | The Dependency graph orders nodes and reports upward edges instead of collapsing cycles (§9.3) |
 | Long edges and upward edges turn a layered drawing into a tangle | Transitive reduction, `MAX_SPAN`, upward edges summarised not drawn; tuned against four reference repos in M8 |
 | Layering is only as good as the import graph (aliases, dynamic imports are missed) | Known limits are documented; provenance (`evidence`) keeps weaker evidence out of this view |

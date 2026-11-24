@@ -27,10 +27,15 @@ class RepoSpec:
     owner: str
     name: str
     ref: str | None = None
+    path: str | None = None  # local folder (SPEC §5.6): owner is "local", name the folder name
 
     @property
     def slug(self) -> str:
         return f"{self.owner}/{self.name}"
+
+    @property
+    def repo_url(self) -> str:
+        return f"file://{self.path}" if self.path else f"{GITHUB_BASE}/{self.slug}"
 
 
 @dataclass(frozen=True)

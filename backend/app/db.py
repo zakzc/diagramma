@@ -6,7 +6,8 @@ and schema are created lazily on first use, so importing the app never touches t
 Schema versions: 1 = one saved edit per format on the diagram row; 2 = edits live in their own
 table keyed by (diagram, format, depth) and diagrams carry their depth range; 3 = the edits
 table no longer restricts `format` in SQL (the API validates it), so new view formats such as
-`layers` need no migration. Older databases are migrated in place.
+`layers` need no migration; 4 = `diagrams.source` ('github' or 'local', SPEC §5.6). Older
+databases are migrated in place.
 """
 
 import json
@@ -20,7 +21,7 @@ from pathlib import Path
 from app.errors import AppError
 from app.models import DiagramRecord, DiagramSummary, Model, SavedEdit
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # `ref` is '' (not NULL) when no ref was given so that UNIQUE treats "no ref" as one value.
 SCHEMA = """
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS diagrams (
   model_json TEXT NOT NULL,
   warnings_json TEXT NOT NULL,
   tool_version TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'github',
   UNIQUE (repo_url, ref, commit_sha)
 );
 CREATE INDEX IF NOT EXISTS diagrams_created ON diagrams (created_at DESC);
@@ -56,13 +58,13 @@ CREATE TABLE IF NOT EXISTS edits (
 
 SUMMARY_COLS = (
     "id, repo_url, owner, name, ref, commit_sha, created_at, container_count, "
-    "component_count, tool_version"
+    "component_count, tool_version, source"
 )
 
 
 def _key(repo_url: str, ref: str | None) -> tuple[str, str]:
-    # GitHub owner/repo names are case-insensitive: one identity per repo.
-    return repo_url.lower(), ref or ""
+    # GitHub owner/repo names are case-insensitive: one identity per repo. Folder paths are not.
+    return (repo_url if repo_url.startswith("file://") else repo_url.lower()), ref or ""
 
 
 def _migrate_v1(con: sqlite3.Connection) -> None:
@@ -93,6 +95,11 @@ def _migrate_v2(con: sqlite3.Connection) -> None:
         "SELECT diagram_id, format, depth, text FROM edits_v2"
     )
     con.execute("DROP TABLE edits_v2")
+
+
+def _migrate_v3(con: sqlite3.Connection) -> None:
+    """v3 -> v4: record where a diagram came from; existing rows are GitHub diagrams."""
+    con.execute("ALTER TABLE diagrams ADD COLUMN source TEXT NOT NULL DEFAULT 'github'")
 
 
 class DiagramStore:
@@ -129,6 +136,8 @@ class DiagramStore:
                         _migrate_v2(con)
                     else:
                         con.executescript(SCHEMA)
+                    if has_table and version < 4:
+                        _migrate_v3(con)
                     con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
                 self._ready = True
             with con:  # commit or roll back
@@ -162,6 +171,7 @@ class DiagramStore:
             model=Model.model_validate_json(row["model_json"]),
             warnings=json.loads(row["warnings_json"]),
             tool_version=row["tool_version"],
+            source=row["source"],
         )
 
     # -- queries ----------------------------------------------------------------------------
@@ -248,7 +258,7 @@ class DiagramStore:
                     "INSERT INTO diagrams (id, repo_url, owner, name, ref, commit_sha, "
                     "mermaid_c4, mermaid_flowchart, model_json, warnings_json, container_count, "
                     "component_count, max_depth, auto_depth, commit_date, tool_version, "
-                    "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "created_at, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
                         diagram_id,
                         url,
@@ -257,6 +267,7 @@ class DiagramStore:
                         ref,
                         record.commit_sha,
                         *generated,
+                        record.source,
                     ),
                 )
         return self.get(diagram_id)

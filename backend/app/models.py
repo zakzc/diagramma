@@ -107,8 +107,11 @@ class ErrorResponse(BaseModel):
 
 
 class DiagramCreate(BaseModel):
-    url: str
+    """A GitHub repo (`url`, optional `ref`) or a local folder (`path`); exactly one."""
+
+    url: str | None = None
     ref: str | None = None
+    path: str | None = None
 
 
 class DiagramCreated(BaseModel):
@@ -149,6 +152,7 @@ class DiagramRecord(Base):
     model: Model
     warnings: list[str] = Field(default_factory=list)
     tool_version: str
+    source: Literal["github", "local"] = "github"
 
 
 class DiagramSummary(Base):
@@ -164,6 +168,22 @@ class DiagramSummary(Base):
     container_count: int
     component_count: int
     tool_version: str
+    source: Literal["github", "local"] = "github"
+
+
+class DirEntry(Base):
+    name: str
+    path: str
+    is_repo: bool  # has .git or a manifest
+
+
+class DirListing(Base):
+    """Sub-directories of a folder, for the folder browser (SPEC §5.6)."""
+
+    path: str
+    parent: str | None = None
+    is_repo: bool
+    dirs: list[DirEntry] = Field(default_factory=list)
 
 
 MAX_EDIT_CHARS = 2_000_000

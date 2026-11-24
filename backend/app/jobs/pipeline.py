@@ -1,11 +1,13 @@
 """Pipeline run inside a worker process. Emits stage events onto a queue."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
 from app import __version__
 from app.analysis.build import build_model
 from app.analysis.fetch import RepoSpec, clone_repo
+from app.analysis.local import fingerprint, git_files, open_local
 from app.analysis.scan import scan_repo
 from app.errors import AppError
 from app.models import DiagramRecord
@@ -18,11 +20,18 @@ def run_pipeline(spec: RepoSpec, queue: Any) -> dict[str, Any]:
     def stage(name: str, message: str) -> None:
         queue.put({"event": "stage", "data": {"stage": name, "message": message}})
 
-    stage("cloning", f"Cloning {spec.slug}" + (f" @ {spec.ref}" if spec.ref else ""))
-    repo = clone_repo(spec)
+    local = spec.path is not None
+    if local:
+        stage("reading", f"Reading {spec.path}")
+        repo = open_local(spec)
+    else:
+        stage("cloning", f"Cloning {spec.slug}" + (f" @ {spec.ref}" if spec.ref else ""))
+        repo = clone_repo(spec)
 
-    stage("scanning", f"Scanning files at {repo.commit_sha[:7]}")
-    scan = scan_repo(repo.path)
+    stage("scanning", "Scanning files" if local else f"Scanning files at {repo.commit_sha[:7]}")
+    scan = scan_repo(repo.path, git_files(repo.path) if local else None)
+    if local:
+        repo = replace(repo, commit_sha=fingerprint(repo.path, scan))
     if not scan.files and not scan.manifests:
         raise AppError(
             "NOTHING_DETECTED", "No source files or manifests were found in this repository."
@@ -35,7 +44,7 @@ def run_pipeline(spec: RepoSpec, queue: Any) -> dict[str, Any]:
     meta = RenderMeta(spec.slug, spec.ref, repo.commit_sha, repo.commit_date, __version__)
     depth = auto_depth(model)
     record = DiagramRecord(
-        repo_url=f"https://github.com/{spec.slug}",
+        repo_url=spec.repo_url,
         owner=spec.owner,
         name=spec.name,
         ref=spec.ref,
@@ -51,6 +60,7 @@ def run_pipeline(spec: RepoSpec, queue: Any) -> dict[str, Any]:
         model=model,
         warnings=model.warnings,
         tool_version=__version__,
+        source="local" if local else "github",
     )
     return {
         "diagram": record.model_dump(),  # persisted by the API process, then replaced by diagramId

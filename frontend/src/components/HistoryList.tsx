@@ -35,10 +35,11 @@ export default function HistoryList({
             <button
               className="min-w-0 flex-1 text-left"
               aria-current={selectedId === d.id}
+              title={d.source === "local" ? d.repo_url.replace(/^file:\/\//, "") : undefined}
               onClick={() => onSelect(d.id)}
             >
               <div className="truncate text-sm font-medium">
-                {d.owner}/{d.name}
+                {d.source === "local" ? d.name : `${d.owner}/${d.name}`}
               </div>
               <div className="truncate text-xs text-slate-500">
                 {d.ref ? `${d.ref} · ` : ""}
@@ -63,7 +64,7 @@ export default function HistoryList({
               </span>
             ) : (
               <button
-                aria-label={`Delete ${d.owner}/${d.name}`}
+                aria-label={`Delete ${d.source === "local" ? d.name : `${d.owner}/${d.name}`}`}
                 className="shrink-0 rounded px-1.5 text-slate-400 hover:text-red-600"
                 onClick={() => setConfirming(d.id)}
               >

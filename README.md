@@ -1,6 +1,6 @@
 # Diagramma
 
-Paste a GitHub repo URL and get a C4-style **Component diagram** of the whole application, rendered with Mermaid. Everything runs locally; the only network use is talking to GitHub (`git fetch` / `ls-remote`).
+Paste a GitHub repo URL (or pick a folder on your machine) and get a C4-style **Component diagram** of the whole application, rendered with Mermaid. Everything runs locally; the only network use is talking to GitHub (`git fetch` / `ls-remote`); a local folder needs no network.
 
 - See how the code is organised as **nested components** (folders, sub-folders, files) and how they depend on each other, at a **depth you choose**.
 - Edit the Mermaid code live in a split view (code 1/3, diagram 2/3, either pane foldable).
@@ -93,16 +93,17 @@ All routes under `/api`, bound to `127.0.0.1`.
 
 | Method & path | Purpose |
 |---|---|
-| `POST /api/diagrams` | `{ url, ref? }` → `{ jobId }`, or `{ diagramId }` if repo+ref+commit already exists (checked with `git ls-remote`, no clone) |
+| `POST /api/diagrams` | `{ url, ref? }` **or** `{ path }` (absolute folder path, analysed in place; reuse is decided by a content fingerprint after the job) → `{ jobId }`, or `{ diagramId }` if repo+ref+commit already exists (checked with `git ls-remote`, no clone) |
 | `GET /api/jobs/{jobId}/events` | SSE: `stage {stage, message}`…, then `done {diagramId, …summary}` or `error {code, message}` |
 | `GET /api/diagrams` | History summaries, newest first |
 | `GET /api/diagrams/{id}` | Full record: texts at the default depth, depth range, model, metadata, warnings, which views have saved edits |
 | `GET /api/diagrams/{id}/views/{format}/{depth}` | One rendering (`format` = `c4` \| `flowchart` \| `layers`, `depth` 1…max): generated text, saved edit, boxes/edges/hubs drawn, and for `layers` a summary of the layering |
 | `PUT /api/diagrams/{id}/edits/{format}/{depth}` | Save edited text for that view (any format); `DELETE` discards the edit. Both return the view |
 | `DELETE /api/diagrams/{id}` | Remove from history |
+| `GET /api/fs/dirs?path=&hidden=` | Folder browser: sub-directories of `path` (default home), parent, repo hint. Names only |
 | `GET /api/health` | Liveness + version |
 
-Every error, including unknown routes, has the shape `{ "error": { "code", "message" } }`. Codes: `INVALID_URL`, `REPO_NOT_FOUND`, `AUTH_REQUIRED`, `CLONE_FAILED`, `NOTHING_DETECTED`, `TIMEOUT`, `DIAGRAM_NOT_FOUND`, `JOB_NOT_FOUND`, `VALIDATION_ERROR`, `INVALID_DEPTH`, `LAYERS_UNAVAILABLE`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `INTERNAL_ERROR`.
+Every error, including unknown routes, has the shape `{ "error": { "code", "message" } }`. Codes: `INVALID_URL`, `INVALID_PATH`, `PATH_NOT_FOUND`, `REPO_NOT_FOUND`, `AUTH_REQUIRED`, `CLONE_FAILED`, `NOTHING_DETECTED`, `TIMEOUT`, `DIAGRAM_NOT_FOUND`, `JOB_NOT_FOUND`, `VALIDATION_ERROR`, `INVALID_DEPTH`, `LAYERS_UNAVAILABLE`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `INTERNAL_ERROR`.
 
 ## Data model
 
@@ -139,7 +140,7 @@ Both dialects come from the same model: a `flowchart` (the default view: nested 
 
 ## Safety (trusted repos only)
 
-Accept only `https://github.com/...` URLs; static analysis only; bind to `127.0.0.1` with CORS limited to the local frontend origin; escape text going into Mermaid; optional `GITHUB_TOKEN` from the backend environment, never logged or returned.
+Accept only `https://github.com/...` URLs in `url` (local folders come only through `path`; the folder is read in place and never modified, `.gitignore` is honoured in git repos, any readable folder is allowed because the API is loopback-only); static analysis only; bind to `127.0.0.1` with CORS limited to the local frontend origin; escape text going into Mermaid; optional `GITHUB_TOKEN` from the backend environment, never logged or returned.
 
 ## Development
 

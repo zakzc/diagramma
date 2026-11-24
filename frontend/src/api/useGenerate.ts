@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, createDiagram } from "./client";
 import type { RepoInput } from "./repoInput";
 
-export type StageName = "cloning" | "scanning" | "detecting" | "rendering";
+export type StageName = "cloning" | "reading" | "scanning" | "detecting" | "rendering";
 export type StageEvent = { stage: StageName; message: string };
 export type ScanSummary = {
   diagramId: string | null;

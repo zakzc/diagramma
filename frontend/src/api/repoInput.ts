@@ -4,7 +4,15 @@ const URL_RE = new RegExp(`^https://github\\.com/(${NAME})/(${NAME})/?$`);
 const SHORT_RE = new RegExp(`^(${NAME})/(${NAME})$`);
 const REF_RE = /^[A-Za-z0-9_][A-Za-z0-9_./-]*$/;
 
-export type RepoInput = { url: string; ref?: string };
+export type RepoInput = { url: string; ref?: string } | { path: string };
+
+const ABSOLUTE_PATH_RE = /^(\/|[A-Za-z]:[\\/]|\\\\)/;
+
+export function validatePathInput(raw: string): { ok: true; value: RepoInput } | { ok: false; error: string } {
+  const path = raw.trim();
+  if (!ABSOLUTE_PATH_RE.test(path)) return { ok: false, error: "Enter the absolute path of a folder." };
+  return { ok: true, value: { path } };
+}
 
 export function validateRepoInput(rawUrl: string, rawRef: string): { ok: true; value: RepoInput } | { ok: false; error: string } {
   const url = rawUrl.trim();

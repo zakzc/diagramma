@@ -6,8 +6,8 @@ Milestones are named **M1, M2, …** (as in SPEC §11).
 
 **Legend:** `[ ]` todo · `[~]` in progress · `[x]` done · `[-]` dropped (add a reason)
 
-**Current milestone:** none open. M7 (deeper components) and M8 (Dependency graph view, simpler form) are built on branch `deeper-components`; M7 is committed locally, M8 is ready to commit; neither is pushed. M1-M6 are in PR #1. Roadmap (SPEC §12) otherwise not started.
-**Last updated:** 2026-11-19
+**Current milestone:** none open. M7 (deeper components) and M8 (Dependency graph view, simpler form) are built on branch `deeper-components`; M7 is committed locally, M8 is ready to commit; neither is pushed. M1-M6 are in PR #1. **M10 (local folder input) is built (SPEC v0.11, §5.6), committed locally, not pushed.** Roadmap (SPEC §12) otherwise not started.
+**Last updated:** 2026-11-24
 
 ---
 
@@ -109,6 +109,20 @@ Specified in SPEC §9.3. **Built in a simpler form** (plain top-down layout; see
 - [-] Hub marking in this view: deferred, the reduction already removes most hub edges in the prototype
 - [-] Per-container filtering and a toggle to draw upward edges: deferred (SPEC §12)
 
+## M10 — Local folder input (SPEC §5.6)
+Requested after M9: diagram a repository from a folder on the machine, not only from GitHub. **Built.**
+- [x] Decisions 1-6 recorded in SPEC §5.6 (fingerprint, honour `.gitignore`, folder-name label + full path, `source` field, folder browser, any folder)
+- [x] Open questions 7-9 were not answered; built with defaults (no `.gitignore` handling without `.git`; browser starts at home with a Hidden toggle; symlinked folders selectable)
+- [x] Backend: `RepoSpec.path`; "open local folder" step returning the same `ClonedRepo` as `clone_repo`; path validation (absolute, exists, directory, resolved)
+- [x] Content fingerprint as `commit_sha`; `.gitignore` honoured (`git ls-files --cached --others --exclude-standard` in a git repo); `repo_url` = `file://<path>`, `owner` = `local`, `name` = folder name; reuse on unchanged folder
+- [x] `POST /api/diagrams` body `{ url, ref? }` or `{ path }` (exactly one); `INVALID_PATH` (400) and `PATH_NOT_FOUND` (404) in `errors.py`; job key by resolved path
+- [x] Pipeline stage message "Reading <folder>"; header comment without date for local diagrams (determinism)
+- [x] `source` (`github` | `local`) on `DiagramRecord`/`DiagramSummary`; `diagrams.source` column, schema v4 with in-place migration (existing rows `github`); `__version__` 0.5.0
+- [x] `GET /api/fs/dirs?path=`: sub-directories only, parent, repo hint; `INVALID_PATH` / `PATH_NOT_FOUND`
+- [x] Frontend: form mode switch (GitHub URL | Local folder), folder browser + path field, hide ref; history entry shows folder name, tooltip and header line show the full path; `npm run gen:api`
+- [-] New test files: not added (user's standing rule: they test it themselves). Checked by hand instead: path errors, folder not modified (tree compared before/after), `.gitignore` honoured, reuse through the API (one history entry after two submits), `file://` still rejected in `url`. Existing DB tests updated for schema v4 and `source`
+- [x] Update README (input modes, folder browser, error codes)
+
 ## Cross-cutting
 - [x] Unified error shape `{ "error": { code, message } }`
 - [x] CORS limited to local frontend origin; bind `127.0.0.1`
@@ -116,7 +130,7 @@ Specified in SPEC §9.3. **Built in a simpler form** (plain top-down layout; see
 - [x] Frontend Vitest/RTL tests (split layout, editor, history)
 - [x] README dev commands verified against reality
 
-## Acceptance (SPEC §11)  (all met)
+## Acceptance (SPEC §11)  (all met; 15-20 are M10)
 - [x] 1. URL → progress → rendered whole-app diagram
 - [x] 2. Containers as boundaries with components; distinct DB/external symbols; cross-container relations; no persons
 - [x] 3. Copied `.mmd` text renders in an external Mermaid viewer (checked with Mermaid 11.17.2 in a bare page, not a hosted viewer; the app pins 12.3.0)
@@ -134,6 +148,12 @@ Specified in SPEC §9.3. **Built in a simpler form** (plain top-down layout; see
 - [x] 12. (M8) Cyclic code still layers (Flask, Django): large cycles are never collapsed; the upward-edge count and the 10 strongest are shown
 - [x] 13. (M8) Only import-derived edges are used; compose/manifest/env-only edges never appear
 - [x] 14. (M8) Readable and honest by default: no drawn forward edge spans more than `MAX_SPAN` layers; the summary states what was omitted; deterministic; parses in two Mermaid versions; Django default view computed in under 1 s
+- [x] 15. (M10) A local folder path gives the same views, depth control, edits and history as a GitHub repo, with no network
+- [x] 16. (M10) The folder is not modified
+- [x] 17. (M10) Relative path, file, missing path, both/neither of `url` and `path` are refused with a readable error
+- [x] 18. (M10) Unchanged folder reuses its entry; a changed one makes a new entry; byte-identical text for same content and version
+- [x] 19. (M10) GitHub input unchanged; `file://` still rejected in `url`
+- [x] 20. (M10) Folder browser lists directories only and reaches any readable folder; `.gitignore` honoured; local entry shows folder name and full path; schema v4 migration
 
 ---
 
@@ -141,6 +161,8 @@ Specified in SPEC §9.3. **Built in a simpler form** (plain top-down layout; see
 
 | Date | Note |
 |---|---|
+| 2026-11-24 | M10 built: local folder input (`path`), fingerprint identity, `.gitignore` via `git ls-files`, `source` field (schema v4, tool 0.5.0), `GET /api/fs/dirs` folder browser, form mode switch, history label. 223 backend and 84 frontend tests pass; checked end to end against a running server on a temp git repo. |
+| 2026-11-24 | Docs: **M10 (local folder input) specified** in SPEC v0.11 (§5.6, API, safety, milestones, acceptance 15-19, risks); roadmap item 9 moved into the build. Open questions 1-6 answered by the user and folded into the spec (folder browser, `source` field, schema v4, `.gitignore`); questions 7-9 remain. No code changed. |
 | 2026-11-19 | M8 built (simpler form): provenance, layering, Dependencies tab, schema v3. 215 backend and 80 frontend tests pass. Verified in a real browser (FastAPI template, Flask, Django, upgrade of an old diagram), in Mermaid 11.17.2, Django view in 20 ms. |
 | 2026-11-19 | Docs: milestones renamed M1…M7; **M8 (Dependency graph view) specified** in SPEC v0.8 (§9.3, API, model, acceptance 11-14, risks) and planned here with a build-order checklist. Design checked with a throwaway prototype on four real repos (not committed). No code changed. |
 | 2026-11-19 | M7 (branch `deeper-components`): nested components, depth control, grouped edges, hubs, per-depth edits, schema v2 with migration. 152 backend and 71 frontend tests pass; verified in a real browser on four repos. |
@@ -154,6 +176,12 @@ Specified in SPEC §9.3. **Built in a simpler form** (plain top-down layout; see
 | 2026-11-19 | SPEC v0.4 written; README and progress tracker added. No code yet. |
 
 ## Decisions & open questions
+
+- M10 (planning): **the folder is read in place, and a content fingerprint replaces the commit as identity.** A local folder may have uncommitted changes or no git at all, so a commit SHA cannot say what was analysed. The fingerprint (sorted relative path + size + mtime of scanned files) keeps reuse (acceptance 6) and determinism (acceptance 7). Cost: touching a file makes a new history entry.
+- M10: **`path` is a separate field, not a `file://` URL in `url`.** This keeps the GitHub-only check in §5.5 intact and makes the two inputs impossible to confuse.
+- M10: browsers cannot give a real folder path, so the UI takes a typed/pasted path. A server-side folder browser is out of scope for now.
+- M10 decisions (2026-11-24): 1 content fingerprint; 2 honour `.gitignore`; 3 folder name as label with the full path as tooltip and header line (the user said "whichever lets me see the full code", so the full path is always visible; revisit if wanted); 4 `source` field, schema v4, tool 0.5.0; 5 folder browser (new `GET /api/fs/dirs`, directory names only); 6 any folder.
+- M10 open questions (SPEC §5.6): 7 `.gitignore` without git (`pathspec` dependency, own matcher, or skip); 8 browser start folder and hidden folders; 9 symlinked folders in the browser.
 
 - M8 (built): **simpler approach.** Plain top-down `flowchart TB`, layer number and colour on each box. Not built: layer bands, hub marking, drawing upward edges, per-container filtering (roadmap). Real results match the prototype: Django at package level 10 layers and 34 upward edges (114 edges become 19 drawn), Flask 14 layers and 25 upward, FastAPI template 10 layers and no cycles (125 become 57).
 - M8: the strip tells the user what was left out (implied edges, edges longer than 3 layers, isolated components, upward edges) so nothing is silently dropped. The strongest upward dependencies are the most useful output on cyclic code (Django: `Core → DB ×66`, `Utils → Core ×15`).
@@ -229,3 +257,6 @@ Specified in SPEC §9.3. **Built in a simpler form** (plain top-down layout; see
 - Frontend pins `typescript@5`: `openapi-typescript` needs the TS 5 JS API, which TS 7 lacks.
 - `mermaid` is pinned to the exact version 12.3.0. Tests use `httpx`; Starlette's TestClient prints a harmless deprecation warning.
 - Record deviations from SPEC.md here, then update SPEC.md.
+- M10: **no pre-job reuse shortcut for folders.** A fingerprint needs a scan, so the job runs and the store returns the existing entry: no duplicate, but the analysis is repeated. A cheaper check could come later.
+- M10: both `url` and `path` is `INVALID_PATH`; neither is `VALIDATION_ERROR` (keeps the old behaviour of an empty body). The spec said "neither: `INVALID_PATH`"; SPEC corrected.
+- M10: the folder browser lists every readable directory on the machine (decision 6). `is_repo` hint = has `.git` or a manifest.

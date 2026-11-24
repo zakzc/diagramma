@@ -54,9 +54,10 @@ function Editor({ d }: { d: DiagramRecord }) {
   return (
     <section aria-label="Diagram workspace" className="flex h-full min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-x-3 border-b border-slate-200 px-4 py-1.5 text-sm dark:border-slate-700">
-        <b>
-          {d.owner}/{d.name}
-        </b>
+        <b>{d.source === "local" ? d.name : `${d.owner}/${d.name}`}</b>
+        {d.source === "local" && (
+          <span className="text-slate-500">{d.repo_url.replace(/^file:\/\//, "")}</span>
+        )}
         <span className="text-slate-500">
           {d.commit_sha.slice(0, 7)} · {d.container_count} containers · {d.component_count} components ·{" "}
           {d.model.externals.length} external

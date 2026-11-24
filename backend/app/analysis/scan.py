@@ -81,7 +81,8 @@ def _is_manifest(name: str) -> bool:
     return low.startswith("docker-compose.") and low.endswith((".yml", ".yaml"))
 
 
-def scan_repo(root: Path) -> ScanResult:
+def scan_repo(root: Path, only: set[str] | None = None) -> ScanResult:
+    """`only`: relative posix paths to consider (e.g. what git does not ignore); None = all."""
     result = ScanResult()
     root = Path(root)
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
@@ -99,6 +100,8 @@ def scan_repo(root: Path) -> ScanResult:
             if full.is_symlink():
                 continue
             rel = (rel_dir / name).as_posix()
+            if only is not None and rel not in only:
+                continue
             if name in ENV_EXAMPLE_NAMES:
                 result.env_files.append(rel)
                 continue

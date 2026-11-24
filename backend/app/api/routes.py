@@ -9,6 +9,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from app import __version__
 from app.analysis.fetch import parse_repo_url, resolve_commit
+from app.analysis.local import list_dirs, parse_local_path
 from app.errors import AppError
 from app.models import (
     DiagramCreate,
@@ -16,6 +17,7 @@ from app.models import (
     DiagramRecord,
     DiagramSummary,
     DiagramView,
+    DirListing,
     EditBody,
     ErrorResponse,
     Health,
@@ -43,9 +45,17 @@ def health() -> Health:
     responses={400: {"model": ErrorResponse}},
 )
 async def create_diagram(body: DiagramCreate, request: Request) -> DiagramCreated:
+    if body.path is not None:
+        if body.url is not None:
+            raise AppError("INVALID_PATH", "Give either a GitHub URL or a folder path, not both.")
+        # A folder has no cheap commit to compare: the job fingerprints it and the store reuses
+        # the entry (SPEC §5.6).
+        return DiagramCreated(jobId=request.app.state.jobs.submit(parse_local_path(body.path)).id)
+    if body.url is None:
+        raise AppError("VALIDATION_ERROR", "Invalid request body.")
     spec = parse_repo_url(body.url, body.ref)  # raises INVALID_URL
     store = request.app.state.store
-    repo_url = f"https://github.com/{spec.slug}"
+    repo_url = spec.repo_url
     # Same repo + ref at the same commit (and tool version): reuse without cloning (SPEC §4.2).
     if store.has_repo(repo_url, spec.ref):
         commit = await run_in_threadpool(resolve_commit, spec)
@@ -54,6 +64,16 @@ async def create_diagram(body: DiagramCreate, request: Request) -> DiagramCreate
             return DiagramCreated(diagramId=existing.id)
     job = request.app.state.jobs.submit(spec)
     return DiagramCreated(jobId=job.id)
+
+
+@router.get(
+    "/fs/dirs",
+    response_model=DirListing,
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def fs_dirs(path: str | None = None, hidden: bool = False) -> DirListing:
+    """Sub-directories of `path` (default: the home folder), for the folder browser."""
+    return list_dirs(path, hidden)
 
 
 @router.get("/jobs/{job_id}/events", responses={404: {"model": ErrorResponse}})

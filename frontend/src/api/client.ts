@@ -5,6 +5,7 @@ export type Health = components["schemas"]["Health"];
 export type DiagramRecord = components["schemas"]["DiagramRecord"];
 export type DiagramSummary = components["schemas"]["DiagramSummary"];
 export type DiagramCreated = components["schemas"]["DiagramCreated"];
+export type DirListing = components["schemas"]["DirListing"];
 
 export class ApiError extends Error {
   constructor(
@@ -37,6 +38,15 @@ export async function createDiagram(input: RepoInput): Promise<DiagramCreated> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),
   });
+  if (!r.ok) throw await failure(r);
+  return r.json();
+}
+
+/** Sub-directories of `path` (default: the home folder), for the folder browser. */
+export async function listDirs(path?: string, hidden = false): Promise<DirListing> {
+  const q = new URLSearchParams({ hidden: String(hidden) });
+  if (path) q.set("path", path);
+  const r = await fetch(`/api/fs/dirs?${q}`);
   if (!r.ok) throw await failure(r);
   return r.json();
 }

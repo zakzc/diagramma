@@ -73,7 +73,7 @@ class JobManager:
         return job
 
     def submit(self, spec: RepoSpec) -> Job:
-        key = (spec.owner.lower(), spec.name.lower(), spec.ref)
+        key = (spec.owner.lower(), spec.path or spec.name.lower(), spec.ref)
         for job in self.jobs.values():  # one job at a time per repo
             if job.key == key and not job.finished:
                 return job
