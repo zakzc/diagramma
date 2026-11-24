@@ -100,10 +100,11 @@ All routes under `/api`, bound to `127.0.0.1`.
 | `GET /api/diagrams/{id}/views/{format}/{depth}` | One rendering (`format` = `c4` \| `flowchart` \| `layers`, `depth` 1…max): generated text, saved edit, boxes/edges/hubs drawn, and for `layers` a summary of the layering |
 | `PUT /api/diagrams/{id}/edits/{format}/{depth}` | Save edited text for that view (any format); `DELETE` discards the edit. Both return the view |
 | `DELETE /api/diagrams/{id}` | Remove from history |
+| `GET /api/diagrams/{id}/nodes/{nodeId}?depth=` | Details of one box (click it in the UI): kind, paths, evidence, contents, hub flag, `uses` / `used_by` lists |
 | `GET /api/fs/dirs?path=&hidden=` | Folder browser: sub-directories of `path` (default home), parent, repo hint. Names only |
 | `GET /api/health` | Liveness + version |
 
-Every error, including unknown routes, has the shape `{ "error": { "code", "message" } }`. Codes: `INVALID_URL`, `INVALID_PATH`, `PATH_NOT_FOUND`, `REPO_NOT_FOUND`, `AUTH_REQUIRED`, `CLONE_FAILED`, `NOTHING_DETECTED`, `TIMEOUT`, `DIAGRAM_NOT_FOUND`, `JOB_NOT_FOUND`, `VALIDATION_ERROR`, `INVALID_DEPTH`, `LAYERS_UNAVAILABLE`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `INTERNAL_ERROR`.
+Every error, including unknown routes, has the shape `{ "error": { "code", "message" } }`. Codes: `INVALID_URL`, `INVALID_PATH`, `PATH_NOT_FOUND`, `REPO_NOT_FOUND`, `AUTH_REQUIRED`, `CLONE_FAILED`, `NOTHING_DETECTED`, `TIMEOUT`, `DIAGRAM_NOT_FOUND`, `NODE_NOT_FOUND`, `JOB_NOT_FOUND`, `VALIDATION_ERROR`, `INVALID_DEPTH`, `LAYERS_UNAVAILABLE`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `INTERNAL_ERROR`.
 
 ## Data model
 

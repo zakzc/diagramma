@@ -8,6 +8,7 @@ from fastapi.concurrency import run_in_threadpool
 from sse_starlette.sse import EventSourceResponse
 
 from app import __version__
+from app.analysis.details import node_details
 from app.analysis.fetch import parse_repo_url, resolve_commit
 from app.analysis.local import list_dirs, parse_local_path
 from app.errors import AppError
@@ -23,6 +24,7 @@ from app.models import (
     Health,
     ImportsSummary,
     LayersSummary,
+    NodeDetails,
     ViewFormat,
 )
 from app.render.c4 import RenderMeta, render_c4
@@ -106,6 +108,22 @@ def list_diagrams(request: Request) -> list[DiagramSummary]:
 )
 def get_diagram(diagram_id: str, request: Request) -> DiagramRecord:
     return request.app.state.store.get(diagram_id)
+
+
+@router.get(
+    "/diagrams/{diagram_id}/nodes/{node_id}",
+    response_model=NodeDetails,
+    responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+)
+def get_node(
+    diagram_id: str, node_id: str, request: Request, depth: int | None = None
+) -> NodeDetails:
+    """Details of one box. `depth` is the viewed depth (default: the diagram's own)."""
+    rec = request.app.state.store.get(diagram_id)
+    d = rec.auto_depth if depth is None else depth
+    if not 1 <= d <= rec.max_depth:
+        raise AppError("INVALID_DEPTH", f"Depth must be between 1 and {rec.max_depth}.")
+    return node_details(rec.model, node_id, d)
 
 
 @router.delete("/diagrams/{diagram_id}", status_code=204, responses={404: {"model": ErrorResponse}})

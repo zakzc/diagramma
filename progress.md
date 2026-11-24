@@ -6,7 +6,7 @@ Milestones are named **M1, M2, …** (as in SPEC §11).
 
 **Legend:** `[ ]` todo · `[~]` in progress · `[x]` done · `[-]` dropped (add a reason)
 
-**Current milestone:** none open. M7 (deeper components) and M8 (Dependency graph view, simpler form) are built on branch `deeper-components`; M7 is committed locally, M8 is ready to commit; neither is pushed. M1-M6 are in PR #1. **M10 (local folder input) is built (SPEC v0.11, §5.6), committed locally, not pushed.** Roadmap (SPEC §12) otherwise not started.
+**Current milestone:** none open. M7 (deeper components) and M8 (Dependency graph view, simpler form) are built on branch `deeper-components`; M7 is committed locally, M8 is ready to commit; neither is pushed. M1-M6 are in PR #1. M10 (local folder input) and **M11 (details panel, SPEC §9.5)** are built on branch `deeper-components`, committed locally, not pushed. Roadmap (SPEC §12) otherwise not started.
 **Last updated:** 2026-11-24
 
 ---
@@ -123,6 +123,16 @@ Requested after M9: diagram a repository from a folder on the machine, not only 
 - [-] New test files: not added (user's standing rule: they test it themselves). Checked by hand instead: path errors, folder not modified (tree compared before/after), `.gitignore` honoured, reuse through the API (one history entry after two submits), `file://` still rejected in `url`. Existing DB tests updated for schema v4 and `source`
 - [x] Update README (input modes, folder browser, error codes)
 
+## M11 — Details panel (SPEC §9.5)
+Roadmap item 1, promoted after M10. **Built.**
+- [x] Spec: SPEC v0.12 (§9.5, API row, milestone, acceptance 21-23, roadmap item 1 updated); open questions 1-3 with defaults
+- [x] `analysis/details.py::node_details`: components (relations at the box's own level via `build_view(model, k.depth)`, hub flag from `drawn_relations` at the viewed depth), containers (relations rolled up per container), external systems, React files (`file_imports`)
+- [x] `GET /api/diagrams/{id}/nodes/{nodeId}?depth=`; `NodeDetails` / `NodeLink` models; `NODE_NOT_FOUND` (404); `INVALID_DEPTH` reused
+- [x] Frontend: click on a box (flowchart nodes and clusters, C4 elements) with a drag guard; `DetailsPanel` overlay with clickable Uses / Used by; closes on view change; `npm run gen:api`
+- [x] Verified in a real browser (Brave via puppeteer-core, on this repo analysed as a local folder): panel opens in Flowchart, C4, Dependencies and Imports; a cluster click works; a link inside the panel selects the other box; a drag does not open it. Found and fixed: Mermaid prefixes box ids with `mmd-N-`, so the first id parser matched nothing
+- [-] New test files: not added (standing rule). Existing 223 backend and 84 frontend tests still pass
+- [-] Layer number / upward edges per box, selection highlight: deferred (SPEC §9.5 open questions 1-2)
+
 ## Cross-cutting
 - [x] Unified error shape `{ "error": { code, message } }`
 - [x] CORS limited to local frontend origin; bind `127.0.0.1`
@@ -130,7 +140,7 @@ Requested after M9: diagram a repository from a folder on the machine, not only 
 - [x] Frontend Vitest/RTL tests (split layout, editor, history)
 - [x] README dev commands verified against reality
 
-## Acceptance (SPEC §11)  (all met; 15-20 are M10)
+## Acceptance (SPEC §11)  (all met; 15-20 are M10, 21-23 are M11)
 - [x] 1. URL → progress → rendered whole-app diagram
 - [x] 2. Containers as boundaries with components; distinct DB/external symbols; cross-container relations; no persons
 - [x] 3. Copied `.mmd` text renders in an external Mermaid viewer (checked with Mermaid 11.17.2 in a bare page, not a hosted viewer; the app pins 12.3.0)
@@ -153,6 +163,9 @@ Requested after M9: diagram a repository from a folder on the machine, not only 
 - [x] 17. (M10) Relative path, file, missing path, both/neither of `url` and `path` are refused with a readable error
 - [x] 18. (M10) Unchanged folder reuses its entry; a changed one makes a new entry; byte-identical text for same content and version
 - [x] 19. (M10) GitHub input unchanged; `file://` still rejected in `url`
+- [x] 21. (M11) Clicking a box opens the panel in all four tabs; a drag does not
+- [x] 22. (M11) Uses / Used by list every dependency at the box's own level, hub edges included; names are clickable
+- [x] 23. (M11) Unknown id, non-model box or bad depth: readable message, nothing breaks
 - [x] 20. (M10) Folder browser lists directories only and reaches any readable folder; `.gitignore` honoured; local entry shows folder name and full path; schema v4 migration
 
 ---
@@ -161,6 +174,7 @@ Requested after M9: diagram a repository from a folder on the machine, not only 
 
 | Date | Note |
 |---|---|
+| 2026-11-24 | M11 built: details panel (SPEC v0.12 §9.5), `GET /api/diagrams/{id}/nodes/{nodeId}`, `DetailsPanel`. Checked in Brave on this repo analysed as a local folder (all four tabs, cluster click, link navigation, drag guard). |
 | 2026-11-24 | M10 built: local folder input (`path`), fingerprint identity, `.gitignore` via `git ls-files`, `source` field (schema v4, tool 0.5.0), `GET /api/fs/dirs` folder browser, form mode switch, history label. 223 backend and 84 frontend tests pass; checked end to end against a running server on a temp git repo. |
 | 2026-11-24 | Docs: **M10 (local folder input) specified** in SPEC v0.11 (§5.6, API, safety, milestones, acceptance 15-19, risks); roadmap item 9 moved into the build. Open questions 1-6 answered by the user and folded into the spec (folder browser, `source` field, schema v4, `.gitignore`); questions 7-9 remain. No code changed. |
 | 2026-11-19 | M8 built (simpler form): provenance, layering, Dependencies tab, schema v3. 215 backend and 80 frontend tests pass. Verified in a real browser (FastAPI template, Flask, Django, upgrade of an old diagram), in Mermaid 11.17.2, Django view in 20 ms. |
@@ -260,3 +274,6 @@ Requested after M9: diagram a repository from a folder on the machine, not only 
 - M10: **no pre-job reuse shortcut for folders.** A fingerprint needs a scan, so the job runs and the store returns the existing entry: no duplicate, but the analysis is repeated. A cheaper check could come later.
 - M10: both `url` and `path` is `INVALID_PATH`; neither is `VALIDATION_ERROR` (keeps the old behaviour of an empty body). The spec said "neither: `INVALID_PATH`"; SPEC corrected.
 - M10: the folder browser lists every readable directory on the machine (decision 6). `is_repo` hint = has `.git` or a manifest.
+- M11: relations are listed at the box's **own level**, not the viewed depth, so the panel is stable when the depth changes and shows a hub's incoming edges (which the flowchart leaves out). Only the hub flag depends on the viewed depth.
+- M11: no backend model change, so no tool-version bump and no regeneration of old diagrams.
+- M11: C4 is clickable too (its ids are the plain alias, `mmd-N-<id>`), not only flowcharts.

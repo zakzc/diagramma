@@ -1,7 +1,10 @@
 # Diagramma — Specification
 
-**Version:** 0.11
+**Version:** 0.12
 **Purpose:** A locally run web app. You paste a GitHub repo URL **or give the path of a folder on your machine**, the backend analyses the repo, and the frontend shows a C4-style **Component diagram** of the *entire application* as a Mermaid graph. Past diagrams are kept in a history list so you can reopen them.
+
+### Changes from v0.11
+- **New: details panel (M11, §9.5).** Click a box in any tab (Flowchart, C4, Dependencies, Imports) to open a panel with what the model knows about it: kind and role, technology, paths, lines and files, evidence, what it contains, and **exactly what it uses and who uses it** (so a hub's hidden incoming edges are listed). Names in the lists are clickable. Backed by `GET /api/diagrams/{id}/nodes/{nodeId}?depth=` (§5.2). No model or schema change, so no tool version bump. Promotes roadmap item 1 into the build (the layer and upward-edge listing is left in the roadmap).
 
 ### Changes from v0.10
 - **New input: a local folder (M10, §5.6).** Besides a GitHub URL, the user can give the absolute path of a repository already on disk. The folder is analysed in place (no clone, no copy, never written to). Everything after the fetch stage is unchanged, so all views and edits work the same. This promotes roadmap item 9 ("Local path input") into the build.
@@ -187,6 +190,7 @@ A top bar for input, a collapsible history sidebar, and below the bar a **horizo
 | `GET /api/diagrams/{id}/views/{format}/{depth}` | One rendering: the generated text, the user's saved edit for that exact view (or null), and the number of boxes, edges and hubs drawn. `depth` is 1…`max_depth` (else `INVALID_DEPTH`). From M8, `format` may also be `layers` (§9.3) and the response carries a `layers` summary object. |
 | `PUT /api/diagrams/{id}/edits/{format}/{depth}` | Body `{ text }`. Saves the user's edited text for that view (text equal to the generated one clears the edit). `DELETE` on the same path discards it (Reset). Both return the view. |
 | `DELETE /api/diagrams/{id}` | Remove from history. |
+| `GET /api/diagrams/{id}/nodes/{nodeId}?depth=` | M11 details panel: one box (container, component, external system or React file) with its kind, paths, evidence, contents, whether it is a hub at `depth`, and its `uses` / `used_by` lists. `nodeId` is the Mermaid id; `depth` defaults to the diagram's auto depth. `NODE_NOT_FOUND` (404) for an unknown id, `INVALID_DEPTH`. |
 | `GET /api/fs/dirs?path=` | M10 folder browser: the sub-directories of `path` (default: the user's home), plus its parent and whether it looks like a repo (has `.git` or a manifest). Directories only, never file contents. Errors `INVALID_PATH` / `PATH_NOT_FOUND`. |
 | `GET /api/health` | Liveness + version. |
 
@@ -428,6 +432,21 @@ A `flowchart LR`, built only from import statements, for containers that are Rea
 
 **Noise control.** A file imported by at least 8 others and 25% of all importers (the same rule as the flowchart's hubs) is drawn once with a dashed border and "used by N" instead of with its incoming edges; files with no import link are counted, not drawn; other npm packages (react, router, UI kits) are counted, not drawn. The legend strip reports all three. Colours come from the backend (`legend`), so the Mermaid text and the legend cannot drift apart.
 
+### 9.5 Details panel — M11, built
+
+Clicking a box in a diagram opens a panel on the right of the diagram pane (a click that is the end of a pan does not count). The browser finds the box from the SVG (`g.node` or `g.cluster`; Mermaid prefixes ids with the render id and, in flowcharts, `flowchart-…-N`), takes the model id from it, and asks `GET /api/diagrams/{id}/nodes/{nodeId}?depth=` with the depth of the current view.
+
+The panel shows: name; kind and role; technology; container; the groups above it; description; paths; lines of code and file count; evidence; what it contains (names); a note if it is a **hub** at that depth (§9.2: incoming edges not drawn in the flowchart); **Uses** and **Used by**, each with the strength (`×N` imports), the label and evidence in a tooltip, sorted by strength. A name in those lists selects that box. ✕ closes it; switching tab, depth or diagram closes it.
+
+Relations are listed at the box's **own level**: a component is compared with its siblings and shallower boxes whatever depth is shown, a container with other containers and external systems, a React file with the files and packages it imports. So the list is the same however the diagram is zoomed, and it includes the hub edges the flowchart leaves out.
+
+Not in M11 (roadmap): layer number and upward edges of the Dependency graph, highlighting the selected box, keyboard navigation.
+
+**Open questions** (numbered; defaults taken so M11 could be built)
+1. **Selection highlight.** Should the clicked box be outlined in the diagram? Built without it.
+2. **Layer information.** Should the panel for a Dependencies box show its layer and its upward edges? Left out (needs the layering result per box).
+3. **Box ids that are not in the model** (for example the `pkg_…` package boxes of the Imports view, or the "↑N" boxes of Dependencies) answer `NODE_NOT_FOUND`; the panel shows the message. Should those get their own details?
+
 ### 9.3 Dependency graph (layered) — M8, built (simplified)
 
 The flowchart (§9.2) is a **structural map**: groups, folders, who is next to whom. The Dependency graph answers a different question: **in which direction does the code depend, and how many levels deep is that chain?** It orders the components into **layers** using the import statements only, so shared foundations sit at the bottom and entry points at the top. Edges point from the importer to what it imports.
@@ -508,6 +527,7 @@ diagramma/
 - **M6 Editor split view:** (can be built right after M1, since it only needs text) resizable 1/3 : 2/3 split, fold states, live preview with error bar, save/reset of edits.
 - **M7 Deeper components and a clearer view** (built): components as a tree with a Depth control, depth roll-up of relations, grouped edges and hubs in the flowchart, per-view edits, schema v2.
 - **M9 Imports view** (built, §9.4): React file model (`files`, `file_imports`) and file-kind classifier; the `imports` format; the Imports tab with a colour legend.
+- **M11 Details panel** (built, §9.5): click a box to see its details, uses and used-by; `GET /api/diagrams/{id}/nodes/{nodeId}`.
 - **M10 Local folder input** (built, §5.6): `path` in `POST /api/diagrams`, open-local-folder fetch step, content fingerprint as identity, `.gitignore`, `source` field (schema v4, tool 0.5.0), folder browser endpoint and UI, form mode switch, `INVALID_PATH` / `PATH_NOT_FOUND`.
 - **M8 Dependency graph view** (built in a simpler form, §9.3): relation provenance; layering with cycle breaking, transitive reduction and long-edge handling; the `layers` format in the views and edits endpoints; the Dependencies tab with its summary strip.
 
@@ -542,13 +562,18 @@ diagramma/
 19. Submitting a GitHub URL still works exactly as before, and `file://` URLs are still rejected in `url`.
 20. The folder browser lists only directories, can reach any readable folder from the home folder, and picking one fills the path; files matched by the folder's `.gitignore` do not appear in the diagram; a local entry shows its folder name and full path; older databases migrate to schema v4 with `source = 'github'`.
 
+**Acceptance (M11, Details panel)**
+21. Clicking a box in Flowchart, C4, Dependencies and Imports opens the panel with that box's details; a drag (pan) does not open it.
+22. Uses and Used by list every dependency at the box's own level with its strength, including the incoming edges of a hub that the flowchart does not draw; clicking a name selects that box.
+23. A box that is not in the model, an unknown id, or a depth out of range gives a readable message (`NODE_NOT_FOUND`, `INVALID_DEPTH`) and breaks nothing.
+
 ---
 
 ## 12. Progressive roadmap (not in the first build)
 
 Roughly in the order I'd suggest:
 
-1. **Details panel:** click a component to see paths, role, technology, evidence and its incoming/outgoing relations (data already in the model). It would also list exactly who depends on a hub or on a layer, and the upward edges of the Dependency graph.
+1. ~~Details panel~~ built as M11 (§9.5). Left here: layer and upward-edge listing for the Dependency graph, highlighting the selected box.
 2. **More languages:** Go, Java, C#, Ruby, Rust, PHP.
 3. **Smarter components:** import-graph community detection (Louvain) when folder conventions give nothing; framework markers (`@Controller`, Spring, Django apps, Rails).
 4. **Smarter readability:** weak-edge pruning, container-level fallback for huge repos; for the Dependency graph: a toggle to draw upward edges, strict layer alignment, and per-container filtering. (Hub nodes drawn once are done for the flowchart, §9.2.)

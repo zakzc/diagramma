@@ -235,6 +235,37 @@ class ImportsSummary(Base):
     legend: list[LegendItem]
 
 
+class NodeLink(Base):
+    """One dependency of a box, as the details panel lists it."""
+
+    id: str
+    name: str
+    strength: int  # import statements
+    label: str
+    evidence: list[str] = Field(default_factory=list)
+
+
+class NodeDetails(Base):
+    """What the details panel shows for one box of a diagram (SPEC §9.5)."""
+
+    id: str
+    name: str
+    kind: Literal["container", "component", "external", "file"]
+    role: str | None = None  # component role, container/external kind, or file kind
+    technology: str | None = None
+    description: str | None = None
+    container: str | None = None  # name of the container it lives in
+    trail: list[str] = Field(default_factory=list)  # names of the groups above it
+    paths: list[str] = Field(default_factory=list)
+    weight: int = 0  # lines of code
+    file_count: int = 0
+    evidence: list[str] = Field(default_factory=list)
+    children: list[str] = Field(default_factory=list)  # names of what it contains
+    is_hub: bool = False  # drawn once with "used by N" in the flowchart at the viewed depth
+    uses: list[NodeLink] = Field(default_factory=list)
+    used_by: list[NodeLink] = Field(default_factory=list)
+
+
 class DiagramView(Base):
     """One rendering of a diagram: a format at a depth, plus the user's saved edit if any."""
 

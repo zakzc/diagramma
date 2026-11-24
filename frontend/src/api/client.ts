@@ -5,6 +5,7 @@ export type Health = components["schemas"]["Health"];
 export type DiagramRecord = components["schemas"]["DiagramRecord"];
 export type DiagramSummary = components["schemas"]["DiagramSummary"];
 export type DiagramCreated = components["schemas"]["DiagramCreated"];
+export type NodeDetails = components["schemas"]["NodeDetails"];
 export type DirListing = components["schemas"]["DirListing"];
 
 export class ApiError extends Error {
@@ -47,6 +48,13 @@ export async function listDirs(path?: string, hidden = false): Promise<DirListin
   const q = new URLSearchParams({ hidden: String(hidden) });
   if (path) q.set("path", path);
   const r = await fetch(`/api/fs/dirs?${q}`);
+  if (!r.ok) throw await failure(r);
+  return r.json();
+}
+
+/** Details of one box (`nodeId` is its Mermaid id); `depth` is the depth of the view clicked in. */
+export async function getNode(id: string, nodeId: string, depth: number): Promise<NodeDetails> {
+  const r = await fetch(`/api/diagrams/${id}/nodes/${encodeURIComponent(nodeId)}?depth=${depth}`);
   if (!r.ok) throw await failure(r);
   return r.json();
 }

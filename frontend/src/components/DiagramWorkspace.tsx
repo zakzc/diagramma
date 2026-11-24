@@ -7,6 +7,7 @@ import CodePane from "./CodePane";
 import DepthControl from "./DepthControl";
 import ImportsStrip from "./ImportsStrip";
 import LayersStrip from "./LayersStrip";
+import DetailsPanel from "./DetailsPanel";
 import DiagramPane from "./DiagramPane";
 import SplitLayout from "./SplitLayout";
 import StatusBar from "./StatusBar";
@@ -25,6 +26,7 @@ export default function DiagramWorkspace({ diagramId }: { diagramId: string }) {
 function Editor({ d }: { d: DiagramRecord }) {
   const ed = useDiagramEditor(d);
   const [renderError, setRenderError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<{ id: string; view: string } | null>(null);
   // The diagram follows the editor after a short pause; switching tab/diagram applies at once.
   const viewKey = `${d.id}:${ed.format}:${ed.format === "imports" ? 1 : ed.depth}`;
   // A new view (or a view finishing its load) applies at once; only typing is debounced.
@@ -161,7 +163,25 @@ function Editor({ d }: { d: DiagramRecord }) {
                   )}
                 </div>
               ),
-              body: <DiagramPane text={renderText} fitKey={viewKey} onResult={setRenderError} />,
+              body: (
+                <DiagramPane
+                  text={renderText}
+                  fitKey={viewKey}
+                  onResult={setRenderError}
+                  onNodeClick={(id) => setSelected({ id, view: viewKey })}
+                  overlay={
+                    selected?.view === viewKey && (
+                      <DetailsPanel
+                        diagramId={d.id}
+                        nodeId={selected.id}
+                        depth={ed.format === "imports" ? 1 : ed.depth}
+                        onSelect={(id) => setSelected({ id, view: viewKey })}
+                        onClose={() => setSelected(null)}
+                      />
+                    )
+                  }
+                />
+              ),
             }}
           />
         )}

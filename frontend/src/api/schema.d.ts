@@ -94,6 +94,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/diagrams/{diagram_id}/nodes/{node_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Node
+         * @description Details of one box. `depth` is the viewed depth (default: the diagram's own).
+         */
+        get: operations["get_node_api_diagrams__diagram_id__nodes__node_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/diagrams/{diagram_id}/views/{format}/{depth}": {
         parameters: {
             query?: never;
@@ -509,6 +529,72 @@ export interface components {
             /** Warnings */
             warnings: string[];
         };
+        /**
+         * NodeDetails
+         * @description What the details panel shows for one box of a diagram (SPEC §9.5).
+         */
+        NodeDetails: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "container" | "component" | "external" | "file";
+            /** Role */
+            role: string | null;
+            /** Technology */
+            technology: string | null;
+            /** Description */
+            description: string | null;
+            /** Container */
+            container: string | null;
+            /** Trail */
+            trail: string[];
+            /** Paths */
+            paths: string[];
+            /**
+             * Weight
+             * @default 0
+             */
+            weight: number;
+            /**
+             * File Count
+             * @default 0
+             */
+            file_count: number;
+            /** Evidence */
+            evidence: string[];
+            /** Children */
+            children: string[];
+            /**
+             * Is Hub
+             * @default false
+             */
+            is_hub: boolean;
+            /** Uses */
+            uses: components["schemas"]["NodeLink"][];
+            /** Used By */
+            used_by: components["schemas"]["NodeLink"][];
+        };
+        /**
+         * NodeLink
+         * @description One dependency of a box, as the details panel lists it.
+         */
+        NodeLink: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Strength */
+            strength: number;
+            /** Label */
+            label: string;
+            /** Evidence */
+            evidence: string[];
+        };
         /** Relation */
         Relation: {
             /** Source */
@@ -843,6 +929,49 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_node_api_diagrams__diagram_id__nodes__node_id__get: {
+        parameters: {
+            query?: {
+                depth?: number | null;
+            };
+            header?: never;
+            path: {
+                diagram_id: string;
+                node_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
