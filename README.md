@@ -160,7 +160,9 @@ npm run gen:api                # regenerate TS types from the OpenAPI schema (no
 npm test
 npm run build                  # type-checks (tsc, strict) and builds to frontend/dist
 
-# one-command run mode: build the frontend once, then `uv run python -m app`
+# one command from the repo root (see run.sh):
+./run.sh          # dev: backend with reload on :8787 + Vite on :5173 (open :5173); Ctrl+C stops both
+./run.sh serve    # build the frontend, then one process serving everything on :8787
 ```
 
 ### Configuration (environment variables, all optional)

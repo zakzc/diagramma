@@ -277,3 +277,4 @@ Roadmap item 1, promoted after M10. **Built.**
 - M11: relations are listed at the box's **own level**, not the viewed depth, so the panel is stable when the depth changes and shows a hub's incoming edges (which the flowchart leaves out). Only the hub flag depends on the viewed depth.
 - M11: no backend model change, so no tool-version bump and no regeneration of old diagrams.
 - M11: C4 is clickable too (its ids are the plain alias, `mmd-N-<id>`), not only flowcharts.
+- Added `run.sh` at the repo root: `./run.sh` starts the backend (reload) and Vite together and stops both on Ctrl+C/TERM; `./run.sh serve` builds the frontend and runs the single-process run mode. Checked: both ports answer, Vite proxies `/api`, no leftover processes after TERM.
