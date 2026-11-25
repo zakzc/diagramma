@@ -7,9 +7,70 @@ Paste a GitHub repo URL (or pick a folder on your machine) and get a C4-style **
 - Copy the raw Mermaid (`.mmd`) text and use it in any Mermaid viewer.
 - Past diagrams are kept in a history list and reopen without re-analysing.
 
-> **Status:** MVP (M1-M6), the deeper-components work (M7) and the Dependency graph view (M8) are built (the last in a simpler form, see Known limits). [SPEC.md](SPEC.md) is the full design (v0.9), [progress.md](progress.md) is the build log with every decision and deviation. If this README and SPEC.md disagree, SPEC.md wins; fix whichever is wrong.
+> **Status:** built through M11 (analysis, history, editor, Dependencies and Imports views, local folders, details panel) plus the UI refresh (M13). [SPEC.md](SPEC.md) is the full design, [progress.md](progress.md) the build log with every decision and deviation. If this README and SPEC.md disagree, SPEC.md wins.
 
 ---
+
+## Getting started
+
+### 1. Install
+
+You need three tools on the machine. Everything else (Python 3.12 itself, every Python and npm package) is installed by the commands below.
+
+| Tool | Why | Check | Get it |
+|---|---|---|---|
+| **git** | the backend runs `git fetch` / `ls-remote` for GitHub repos | `git --version` | https://git-scm.com |
+| **uv** | installs Python 3.12 and the backend packages | `uv --version` | https://docs.astral.sh/uv/getting-started/installation/ (macOS: `brew install uv`) |
+| **Node.js 20.19+** (22 LTS is safe) with npm | installs and builds the frontend (Vite 8) | `node -v` | https://nodejs.org |
+
+Then, once per machine (and again after pulling changes that touch the lock files):
+
+```bash
+cd backend  && uv sync --locked     # Python deps from uv.lock (the equivalent of `npm ci`)
+cd ../frontend && npm ci            # npm deps from package-lock.json
+```
+
+- `uv sync` creates `backend/.venv` and installs exactly what `uv.lock` pins, including the dev tools (pytest, ruff). `--locked` makes it fail instead of silently changing the lock file, like `npm ci`. Add `--no-dev` to skip pytest and ruff.
+- `uv` reads `backend/.python-version` (3.12) and downloads that Python if it is missing, so you do not install Python yourself.
+- Without `uv`: `python3.12 -m venv backend/.venv && backend/.venv/bin/pip install -e backend` also works (it reads `pyproject.toml`, unpinned), but then run the backend with that venv's Python.
+- Nothing from the repos you analyse is ever installed.
+
+### 2. Run
+
+From the repo root, after step 1:
+
+```bash
+./run.sh            # development: backend (auto-reload) on :8787 + Vite on :5173
+                    # open http://localhost:5173 ; Ctrl+C stops both
+./run.sh serve      # one process: builds the frontend, then serves UI + API on
+                    # http://127.0.0.1:8787
+```
+
+Use `./run.sh serve` for everyday use and `./run.sh` when changing code. On Windows, or to start the pieces by hand:
+
+```bash
+# terminal 1 (API, plus the built frontend if frontend/dist exists)
+cd backend && uv run python -m app
+# terminal 2 (dev UI only, proxies /api to :8787)
+cd frontend && npm run dev
+# or build the UI once so terminal 1 serves it on :8787
+cd frontend && npm run build
+```
+
+Then paste a GitHub URL, or choose **Local folder**, and press **Generate**. Optional settings (private repos, ports, data location) are in [Configuration](#configuration-environment-variables-all-optional).
+
+### Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| `uv: command not found` / `run.sh` fails at `uv run` | Install uv (table above) and open a new terminal. |
+| `ModuleNotFoundError` (fastapi, tree_sitter, ...) | Step 1 was skipped or run in the wrong folder: `cd backend && uv sync --locked`. |
+| `vite: command not found` / `Cannot find module` | `cd frontend && npm ci`. |
+| Vite or npm errors about the Node version | Upgrade Node to 20.19+ (`node -v`). |
+| Page loads but every request fails (`backend: unreachable`) | The backend is not running, or something else uses port 8787. Set `DIAGRAMMA_PORT` (and the Vite proxy in `frontend/vite.config.ts`) if you must change it. |
+| `:8787` shows a JSON "not found" instead of the app | `frontend/dist` is missing: run `./run.sh serve` or `npm run build` in `frontend/`. |
+| `CLONE_FAILED` / `AUTH_REQUIRED` for a GitHub repo | `git` is missing, offline, or the repo is private: set `GITHUB_TOKEN`. |
+| `Permission denied: ./run.sh` | `chmod +x run.sh`. |
 
 ## Scope
 
@@ -145,24 +206,18 @@ Accept only `https://github.com/...` URLs in `url` (local folders come only thro
 
 ## Development
 
+Install and run: see [Getting started](#getting-started). Day-to-day commands:
+
 ```bash
-# backend (Python 3.12 is pinned via backend/.python-version; uv fetches it)
-cd backend && uv sync
-uv run python -m app          # API + built frontend on http://127.0.0.1:8787 (loopback only)
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8787 --reload   # dev, with reload
+# backend (from backend/)
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8787 --reload   # what ./run.sh runs
 uv run pytest
 uv run ruff check . && uv run ruff format .
 
-# frontend
-cd frontend && npm ci          # or npm install
-npm run dev                    # Vite on :5173, proxies /api to :8787 (start the backend too)
-npm run gen:api                # regenerate TS types from the OpenAPI schema (no server needed)
+# frontend (from frontend/)
 npm test
+npm run gen:api                # regenerate TS types from the OpenAPI schema (no server needed)
 npm run build                  # type-checks (tsc, strict) and builds to frontend/dist
-
-# one command from the repo root (see run.sh):
-./run.sh          # dev: backend with reload on :8787 + Vite on :5173 (open :5173); Ctrl+C stops both
-./run.sh serve    # build the frontend, then one process serving everything on :8787
 ```
 
 ### Configuration (environment variables, all optional)
