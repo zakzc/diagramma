@@ -16,8 +16,6 @@ export default function RepoForm({
   const [browsing, setBrowsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const field =
-    "rounded border px-2 py-1 text-sm bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600";
   const local = mode === "local";
 
   return (
@@ -31,11 +29,12 @@ export default function RepoForm({
         onSubmit(v.value);
       }}
     >
-      <fieldset className="flex shrink-0 gap-2 py-1 text-sm">
+      <fieldset className="seg">
         <legend className="sr-only">Source</legend>
         {(["github", "local"] as const).map((m) => (
-          <label key={m} className="flex items-center gap-1">
+          <label key={m} className="seg-item has-[:checked]:bg-blue-600 has-[:checked]:font-medium has-[:checked]:text-white has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-inset has-[:focus-visible]:ring-blue-500">
             <input
+              className="sr-only"
               type="radio"
               name="source"
               checked={mode === m}
@@ -54,19 +53,19 @@ export default function RepoForm({
           <div className="flex gap-2">
             <input
               aria-label="Folder path"
-              className={`${field} w-full`}
+              className="field w-full"
               placeholder="/absolute/path/to/repo"
               value={path}
               onChange={(e) => setPath(e.target.value)}
             />
-            <button type="button" className="shrink-0 rounded border px-2 py-1 text-sm" onClick={() => setBrowsing(!browsing)}>
+            <button type="button" className="btn btn-secondary" onClick={() => setBrowsing(!browsing)}>
               Browse…
             </button>
           </div>
         ) : (
           <input
             aria-label="GitHub repo URL"
-            className={`${field} w-full`}
+            className="field w-full"
             placeholder="https://github.com/owner/repo"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
@@ -92,8 +91,8 @@ export default function RepoForm({
       {!local && (
         <input
           aria-label="Branch, tag or commit"
-          className={`${field} w-40`}
-          placeholder="ref (optional)"
+          className="field w-44"
+          placeholder="Branch or tag (optional)"
           value={ref}
           onChange={(e) => setRef(e.target.value)}
         />
@@ -101,7 +100,7 @@ export default function RepoForm({
       <button
         type="submit"
         disabled={busy}
-        className="rounded bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-50"
+        className="btn btn-primary"
       >
         {busy ? "Working…" : "Generate"}
       </button>

@@ -59,11 +59,11 @@ export default function DetailsPanel({
   return (
     <aside
       aria-label="Details"
-      className="absolute right-2 top-2 z-10 max-h-[calc(100%-1rem)] w-80 overflow-auto rounded border border-slate-300 bg-white p-3 text-sm text-slate-900 shadow-lg"
+      className="absolute right-2 top-2 z-10 max-h-[calc(100%-1rem)] w-80 overflow-auto rounded-lg border border-slate-300 bg-white p-3 text-sm text-slate-900 shadow-xl"
     >
       <div className="flex items-start gap-2">
         <h2 className="min-w-0 flex-1 break-words font-semibold">{n?.name ?? (q.isPending ? "Loading…" : nodeId)}</h2>
-        <button aria-label="Close details" className="shrink-0 text-slate-400 hover:text-slate-700" onClick={onClose}>
+        <button aria-label="Close details" title="Close" className="btn btn-ghost btn-sm shrink-0" onClick={onClose}>
           ✕
         </button>
       </div>

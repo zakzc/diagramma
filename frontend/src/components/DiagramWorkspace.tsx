@@ -26,19 +26,19 @@ export default function DiagramWorkspace({ diagramId }: { diagramId: string }) {
 function Editor({ d }: { d: DiagramRecord }) {
   const ed = useDiagramEditor(d);
   const [renderError, setRenderError] = useState<string | null>(null);
+  const [warnOpen, setWarnOpen] = useState(true);
   const [selected, setSelected] = useState<{ id: string; view: string } | null>(null);
   // The diagram follows the editor after a short pause; switching tab/diagram applies at once.
   const viewKey = `${d.id}:${ed.format}:${ed.format === "imports" ? 1 : ed.depth}`;
   // A new view (or a view finishing its load) applies at once; only typing is debounced.
   const renderText = useDebounced(ed.text, RENDER_DEBOUNCE_MS, `${viewKey}:${ed.loading}`);
 
-  const btn = "rounded border px-2 py-0.5 text-xs border-slate-300 dark:border-slate-600";
   const tab = (f: EditFormat, name: string, hint?: string) => (
     <button
       role="tab"
       title={hint}
       aria-selected={ed.format === f}
-      className={`${btn} ${ed.format === f ? "bg-slate-200 dark:bg-slate-700" : ""}`}
+      className={`seg-item ${ed.format === f ? "seg-on" : ""}`}
       disabled={ed.loading}
       onClick={() => {
         ed.setFormat(f);
@@ -55,8 +55,8 @@ function Editor({ d }: { d: DiagramRecord }) {
 
   return (
     <section aria-label="Diagram workspace" className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-wrap items-center gap-x-3 border-b border-slate-200 px-4 py-1.5 text-sm dark:border-slate-700">
-        <b>{d.source === "local" ? d.name : `${d.owner}/${d.name}`}</b>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-200 px-4 py-2 text-sm dark:border-slate-700">
+        <b className="text-base">{d.source === "local" ? d.name : `${d.owner}/${d.name}`}</b>
         {d.source === "local" && (
           <span className="text-slate-500">{d.repo_url.replace(/^file:\/\//, "")}</span>
         )}
@@ -108,17 +108,22 @@ function Editor({ d }: { d: DiagramRecord }) {
       {offerFlowchart && (
         <div className="flex items-center gap-2 border-b bg-red-50 px-4 py-1.5 text-sm text-red-900 dark:bg-red-950 dark:text-red-200">
           The C4 diagram could not be rendered.
-          <button className={btn} onClick={() => ed.setFormat("flowchart")}>
+          <button className="btn btn-sm btn-secondary" onClick={() => ed.setFormat("flowchart")}>
             Show flowchart instead
           </button>
         </div>
       )}
-      {d.warnings.length > 0 && (
-        <ul className="border-b bg-amber-50 px-4 py-1.5 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-          {d.warnings.map((w) => (
-            <li key={w}>⚠ {w}</li>
-          ))}
-        </ul>
+      {d.warnings.length > 0 && warnOpen && (
+        <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-1 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          <ul className="min-w-0 flex-1 py-1">
+            {d.warnings.map((w) => (
+              <li key={w}>⚠ {w}</li>
+            ))}
+          </ul>
+          <button aria-label="Dismiss warnings" title="Dismiss" className="btn btn-ghost btn-sm" onClick={() => setWarnOpen(false)}>
+            ✕
+          </button>
+        </div>
       )}
       <div className="min-h-0 flex-1">
         {!ed.ready ? (
@@ -148,7 +153,7 @@ function Editor({ d }: { d: DiagramRecord }) {
             right={{
               title: "Diagram",
               actions: (
-                <div role="tablist" aria-label="Format" className="flex gap-1">
+                <div role="tablist" aria-label="Format" className="seg seg-sm">
                   {tab("flowchart", "Flowchart")}
                   {tab("c4", "C4")}
                   {tab(

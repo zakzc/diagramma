@@ -30,23 +30,24 @@ export default function DiagramPane({
   const [copied, setCopied] = useState(false);
 
   const fit = () => zoom.current?.fitToView({ animationTime: 0 });
-  const btn = "rounded border px-2 py-0.5 text-xs border-slate-300 dark:border-slate-600";
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-1 border-b border-slate-200 px-3 py-1 dark:border-slate-700">
-        <button className={btn} aria-label="Zoom in" onClick={() => zoom.current?.zoomIn()}>
-          +
-        </button>
-        <button className={btn} aria-label="Zoom out" onClick={() => zoom.current?.zoomOut()}>
-          −
-        </button>
-        <button className={btn} onClick={fit}>
-          Fit
-        </button>
+      <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-1.5 dark:border-slate-700">
+        <div role="group" aria-label="Zoom" className="seg seg-sm">
+          <button className="seg-item" aria-label="Zoom out" title="Zoom out" onClick={() => zoom.current?.zoomOut()}>
+            −
+          </button>
+          <button className="seg-item" aria-label="Zoom in" title="Zoom in" onClick={() => zoom.current?.zoomIn()}>
+            +
+          </button>
+          <button className="seg-item" title="Fit the diagram to the pane" onClick={fit}>
+            Fit
+          </button>
+        </div>
         <span className="flex-1" />
         <button
-          className={btn}
+          className="btn btn-sm btn-secondary"
           title="Copy the Mermaid text of this diagram"
           onClick={() =>
             navigator.clipboard
@@ -63,8 +64,9 @@ export default function DiagramPane({
       </div>
       {/* Always a light canvas: Mermaid's dark C4 theme leaves container and relation labels
           nearly unreadable, so the diagram keeps the default theme in both UI themes. */}
+      <div className="min-h-0 flex-1 bg-slate-100 p-2 dark:bg-slate-950">
       <div
-        className="relative min-h-0 flex-1 bg-white"
+        className="relative h-full overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm dark:border-slate-700"
         onPointerDown={(e) => (down.current = [e.clientX, e.clientY])}
         onClick={(e) => {
           // A drag (pan) also ends in a click: only a click that did not move selects a box.
@@ -94,6 +96,7 @@ export default function DiagramPane({
           </TransformComponent>
         </TransformWrapper>
         {overlay}
+      </div>
       </div>
     </div>
   );

@@ -24,12 +24,12 @@ export default function FolderBrowser({
     <div
       role="dialog"
       aria-label="Choose a folder"
-      className="absolute left-0 top-full z-20 mt-1 w-[32rem] max-w-full rounded border border-slate-300 bg-white p-2 text-sm shadow-lg dark:border-slate-600 dark:bg-slate-800"
+      className="absolute left-0 top-full z-20 mt-1 w-[32rem] max-w-full rounded-lg border border-slate-300 bg-white p-3 text-sm shadow-xl dark:border-slate-600 dark:bg-slate-800"
     >
       <div className="mb-1 flex items-center gap-2">
         <button
           type="button"
-          className="rounded border px-2 py-0.5 disabled:opacity-40"
+          className="btn btn-secondary btn-sm"
           disabled={!listing?.parent}
           onClick={() => listing?.parent && setPath(listing.parent)}
         >
@@ -53,7 +53,7 @@ export default function FolderBrowser({
           <li key={d.path}>
             <button
               type="button"
-              className="w-full truncate rounded px-2 py-0.5 text-left hover:bg-slate-100 dark:hover:bg-slate-700"
+              className="w-full truncate rounded px-2 py-1 text-left hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-700"
               onClick={() => setPath(d.path)}
             >
               📁 {d.name}
@@ -64,12 +64,12 @@ export default function FolderBrowser({
         {listing && listing.dirs.length === 0 && <li className="px-2 text-xs text-slate-500">No sub-folders.</li>}
       </ul>
       <div className="mt-2 flex justify-end gap-2">
-        <button type="button" className="rounded border px-2 py-0.5" onClick={onClose}>
+        <button type="button" className="btn btn-secondary" onClick={onClose}>
           Cancel
         </button>
         <button
           type="button"
-          className="rounded bg-blue-600 px-2 py-0.5 text-white disabled:opacity-50"
+          className="btn btn-primary"
           disabled={!listing}
           onClick={() => listing && onPick(listing.path)}
         >

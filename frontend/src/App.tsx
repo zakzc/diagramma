@@ -47,17 +47,18 @@ export default function App() {
   const busy = state.status === "running";
   return (
     <div className="h-full flex flex-col bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
-      <header className="flex items-start gap-3 border-b px-4 py-2 border-slate-200 dark:border-slate-700">
+      <header className="flex items-start gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-700 dark:bg-slate-800/60">
         <button
           aria-label={folded ? "Show history" : "Hide history"}
-          className="py-1 text-slate-500"
+          title={folded ? "Show history" : "Hide history"}
+          className="btn btn-ghost"
           onClick={toggleFold}
         >
           ☰
         </button>
-        <h1 className="font-semibold py-1">Diagramma</h1>
+        <h1 className="py-1 text-base font-semibold">Diagramma</h1>
         <RepoForm busy={busy} onSubmit={start} />
-        <span className="text-xs text-slate-500 py-1.5">
+        <span className="shrink-0 py-1.5 text-xs text-slate-500">
           {health.isPending && "backend: …"}
           {health.isError && "backend: unreachable"}
           {health.data && `backend: ${health.data.status} v${health.data.version}`}
@@ -71,7 +72,7 @@ export default function App() {
           }`}
           hidden={folded}
         >
-          <h2 className="px-3 pt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">History</h2>
+          <h2 className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">History</h2>
           <HistoryList
             selectedId={selectedId}
             onSelect={(id) => {

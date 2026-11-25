@@ -30,10 +30,10 @@ export default function HistoryList({
   return (
     <ul aria-label="History" className="divide-y divide-slate-200 dark:divide-slate-700">
       {list.data.map((d) => (
-        <li key={d.id} className={selectedId === d.id ? "bg-slate-100 dark:bg-slate-800" : ""}>
+        <li key={d.id} className={`border-l-2 ${selectedId === d.id ? "border-blue-600 bg-blue-50 dark:bg-slate-800" : "border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50"}`}>
           <div className="flex items-start gap-1 p-2">
             <button
-              className="min-w-0 flex-1 text-left"
+              className="min-w-0 flex-1 rounded text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               aria-current={selectedId === d.id}
               title={d.source === "local" ? d.repo_url.replace(/^file:\/\//, "") : undefined}
               onClick={() => onSelect(d.id)}
@@ -52,20 +52,21 @@ export default function HistoryList({
             {confirming === d.id ? (
               <span className="flex shrink-0 gap-1 text-xs">
                 <button
-                  className="rounded bg-red-600 px-1.5 py-0.5 text-white"
+                  className="btn btn-sm btn-danger"
                   disabled={remove.isPending}
                   onClick={() => remove.mutate(d.id)}
                 >
                   Delete
                 </button>
-                <button className="rounded border px-1.5 py-0.5" onClick={() => setConfirming(null)}>
+                <button className="btn btn-sm btn-secondary" onClick={() => setConfirming(null)}>
                   Cancel
                 </button>
               </span>
             ) : (
               <button
                 aria-label={`Delete ${d.source === "local" ? d.name : `${d.owner}/${d.name}`}`}
-                className="shrink-0 rounded px-1.5 text-slate-400 hover:text-red-600"
+                title="Delete from history"
+                className="btn btn-ghost btn-sm hover:!text-red-600"
                 onClick={() => setConfirming(d.id)}
               >
                 ✕

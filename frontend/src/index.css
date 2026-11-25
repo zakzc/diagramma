@@ -3,3 +3,41 @@
 @tailwind utilities;
 
 html, body, #root { height: 100%; }
+
+/* One small set of controls (SPEC §9.7): every button, field and tab comes from here. */
+@layer components {
+  .btn {
+    @apply inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-md border px-3 text-sm font-medium
+      transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500
+      focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 dark:focus-visible:ring-offset-slate-900;
+  }
+  .btn-sm { @apply h-7 px-2 text-xs; }
+  .btn-primary {
+    @apply border-blue-600 bg-blue-600 text-white hover:bg-blue-700 disabled:hover:bg-blue-600;
+  }
+  .btn-secondary {
+    @apply border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:hover:bg-white
+      dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:disabled:hover:bg-slate-800;
+  }
+  .btn-danger { @apply border-red-600 bg-red-600 text-white hover:bg-red-700; }
+  .btn-ghost {
+    @apply w-8 border-transparent px-0 text-slate-500 hover:bg-slate-200 hover:text-slate-900
+      disabled:hover:bg-transparent dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100;
+  }
+  .field {
+    @apply h-8 rounded-md border border-slate-300 bg-white px-2.5 text-sm placeholder:text-slate-400
+      focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40
+      dark:border-slate-600 dark:bg-slate-800;
+  }
+  /* A group of mutually exclusive choices: tabs, depth, source. */
+  .seg { @apply inline-flex shrink-0 overflow-hidden rounded-md border border-slate-300 dark:border-slate-600; }
+  .seg-item {
+    @apply inline-flex h-8 min-w-8 cursor-pointer items-center justify-center gap-1 border-l border-slate-300 bg-white px-3
+      text-sm text-slate-700 transition-colors first:border-l-0 hover:bg-slate-100
+      focus:outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500
+      disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white
+      dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:disabled:hover:bg-slate-800;
+  }
+  .seg-on, .seg-on:hover { @apply bg-blue-600 font-medium text-white dark:bg-blue-600 dark:hover:bg-blue-600; }
+  .seg-sm .seg-item { @apply h-7 min-w-7 px-2 text-xs; }
+}

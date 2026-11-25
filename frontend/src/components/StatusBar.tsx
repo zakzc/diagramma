@@ -30,11 +30,10 @@ export default function StatusBar({
   onReset: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
-  const btn = "rounded border px-2 py-0.5 text-xs border-slate-300 disabled:opacity-40 dark:border-slate-600";
   const summary = error ? summarizeError(error) : null;
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-3 py-1.5 text-xs dark:border-slate-700">
+    <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/60 dark:border-slate-700">
       <span role="status" aria-live="polite" className="line-clamp-2 min-w-0 flex-1 break-words" title={error ?? undefined}>
         {summary ? (
           <span className="text-red-600">
@@ -55,7 +54,7 @@ export default function StatusBar({
         <span className="flex items-center gap-1">
           Discard your saved edit?
           <button
-            className={`${btn} bg-red-600 text-white`}
+            className="btn btn-sm btn-danger"
             onClick={() => {
               setConfirming(false);
               onReset();
@@ -63,21 +62,26 @@ export default function StatusBar({
           >
             Discard
           </button>
-          <button className={btn} onClick={() => setConfirming(false)}>
+          <button className="btn btn-sm btn-secondary" onClick={() => setConfirming(false)}>
             Cancel
           </button>
         </span>
       ) : (
         <button
-          className={btn}
+          className="btn btn-sm btn-secondary"
           disabled={!canReset}
-          title="Back to the generated diagram"
+          title={canReset ? "Back to the generated diagram" : "Already showing the generated diagram"}
           onClick={() => (hasSavedEdit ? setConfirming(true) : onReset())}
         >
           Reset
         </button>
       )}
-      <button className={btn} disabled={!dirty || saving} onClick={onSave}>
+      <button
+        className="btn btn-sm btn-primary"
+        disabled={!dirty || saving}
+        title={dirty ? undefined : "No changes to save"}
+        onClick={onSave}
+      >
         {saving ? "Saving…" : "Save"}
       </button>
     </div>

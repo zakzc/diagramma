@@ -140,11 +140,14 @@ Roadmap item 1, promoted after M10. **Built.**
 - [ ] Imports tab and error text without "React"; tool version 0.6.0
 
 ## M13 — UI refresh (SPEC §9.7)
-**Specified, not built.** Waiting for answers to open questions 1-5.
+**Built** with the spec defaults (open questions 1-5 not answered).
 - [x] Spec: §9.7
-- [ ] Shared control classes (primary, secondary, ghost, segmented), focus/disabled states
-- [ ] RepoForm, depth stepper, tabs, diagram toolbar, history, warning strip
-- [ ] Verified in a real browser, both themes
+- [x] `index.css` `@layer components`: `.btn` (+ `-primary`, `-secondary`, `-danger`, `-ghost`, `-sm`), `.field`, `.seg` / `.seg-item` / `.seg-on`; focus ring, disabled state
+- [x] Restyled: header (source segmented control, labelled field, Browse, Generate), folder browser, depth (segmented, labelled), diagram tabs and zoom group, Copy, Save/Reset (disabled titles say why), history (selected accent, labelled delete), details close, pane headers, framed diagram canvas, dismissible warning strip
+- [x] Behaviour, roles, aria-labels unchanged: 84 frontend tests pass, `tsc -b` clean; no test files added
+- [x] Checked in Brave, light and dark, plus the folder browser
+- [-] Depth is a joined segmented control, not a −/+ stepper (every level is one click)
+- [-] Code pane stays open by default; no icon library (default answers 3 and 4)
 
 ## Cross-cutting
 - [x] Unified error shape `{ "error": { code, message } }`

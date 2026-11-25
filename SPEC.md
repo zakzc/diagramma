@@ -4,7 +4,7 @@
 **Purpose:** A locally run web app. You paste a GitHub repo URL **or give the path of a folder on your machine**, the backend analyses the repo, and the frontend shows a C4-style **Component diagram** of the *entire application* as a Mermaid graph. Past diagrams are kept in a history list so you can reopen them.
 
 ### Changes from v0.12
-- **Spec only, not built: Imports view for more than React (M12, §9.6) and a UI refresh (M13, §9.7).** The file graph already exists for every Python, TypeScript and JavaScript file; only the React filter hides it. Java, Kotlin, C and C++ have no parser yet and stay roadmap item 2. The UI refresh defines one small set of button/control styles and replaces the loose radios, tiny squares and grey chips. Open questions are numbered in each section.
+- **Specified: Imports view for more than React (M12, §9.6, not built). Built: UI refresh (M13, §9.7).** The file graph already exists for every Python, TypeScript and JavaScript file; only the React filter hides it. Java, Kotlin, C and C++ have no parser yet and stay roadmap item 2. The UI refresh defines one small set of button/control styles and replaces the loose radios, tiny squares and grey chips. Open questions are numbered in each section.
 
 ### Changes from v0.11
 - **New: details panel (M11, §9.5).** Click a box in any tab (Flowchart, C4, Dependencies, Imports) to open a panel with what the model knows about it: kind and role, technology, paths, lines and files, evidence, what it contains, and **exactly what it uses and who uses it** (so a hub's hidden incoming edges are listed). Names in the lists are clickable. Backed by `GET /api/diagrams/{id}/nodes/{nodeId}?depth=` (§5.2). No model or schema change, so no tool version bump. Promotes roadmap item 1 into the build (the layer and upward-edge listing is left in the roadmap).
@@ -503,12 +503,12 @@ The tab is named **Imports** (no "React"); `IMPORTS_UNAVAILABLE` now means "no a
 3. **Mixed repos.** Show React and non-React containers in one graph grouped per container (default), or one graph per container with a selector?
 4. **Test files.** They are already excluded by the scanner (§8). Keep excluded (default) or draw them in a separate "Tests" kind?
 
-### 9.7 UI refresh — M13, specified (not built)
+### 9.7 UI refresh — M13, built
 
 **What is wrong now** (from the running app): the source choice is two bare radio buttons; the "ref" field has no label; depth is six unlabelled squares; Flowchart/C4/Dependencies/Imports, +/-/Fit and Copy are the same low-contrast grey chips, so nothing says which is a tab, a tool or an action; Generate is the only button that looks like one; Reset/Save are greyed with no explanation; history delete is a bare "✕"; the amber warning banner is permanent and heavy; the diagram is a white sheet with no frame against the dark chrome.
 
 **Proposal.** No behaviour change, only styling and layout, Tailwind only, no new dependency. A few shared classes in `index.css` (`@layer components`) so every control comes from the same set:
-- **Primary button** (filled accent: Generate, Select this folder, Save), **secondary** (outlined: Browse…, Copy .mmd, Reset), **icon/ghost** (✕, collapse, +/-) with a tooltip and an accessible name, and a **segmented control** (one rounded group, one selected segment) used for the source choice (GitHub URL | Local folder), the depth stepper (`Depth  −  3  +`, with the maximum shown) and the diagram tabs.
+- **Primary button** (filled accent: Generate, Select this folder, Save), **secondary** (outlined: Browse…, Copy .mmd, Reset), **icon/ghost** (✕, collapse, +/-) with a tooltip and an accessible name, and a **segmented control** (one rounded group, one selected segment) used for the source choice (GitHub URL | Local folder), the depth choice (labelled `Depth`, one joined button per level; a dropdown above 8 levels, as before) and the diagram tabs.
 - Visible focus ring, hover and pressed states, a clear disabled look with a `title` saying why (e.g. Save: "No changes to save"), minimum 32px hit targets, consistent 8px spacing.
 - The diagram gets a framed canvas with a toolbar above it in two groups (view tools | actions); the history list gets a labelled delete icon and a confirm-free undo-less delete as now.
 - The warning banner becomes a compact, dismissible strip.
@@ -573,7 +573,7 @@ diagramma/
 - **M6 Editor split view:** (can be built right after M1, since it only needs text) resizable 1/3 : 2/3 split, fold states, live preview with error bar, save/reset of edits.
 - **M7 Deeper components and a clearer view** (built): components as a tree with a Depth control, depth roll-up of relations, grouped edges and hubs in the flowchart, per-view edits, schema v2.
 - **M9 Imports view** (built, §9.4): React file model (`files`, `file_imports`) and file-kind classifier; the `imports` format; the Imports tab with a colour legend.
-- **M12 Imports beyond React** (specified, §9.6) and **M13 UI refresh** (specified, §9.7): not built.
+- **M12 Imports beyond React** (specified, §9.6, not built) and **M13 UI refresh** (built, §9.7).
 - **M11 Details panel** (built, §9.5): click a box to see its details, uses and used-by; `GET /api/diagrams/{id}/nodes/{nodeId}`.
 - **M10 Local folder input** (built, §5.6): `path` in `POST /api/diagrams`, open-local-folder fetch step, content fingerprint as identity, `.gitignore`, `source` field (schema v4, tool 0.5.0), folder browser endpoint and UI, form mode switch, `INVALID_PATH` / `PATH_NOT_FOUND`.
 - **M8 Dependency graph view** (built in a simpler form, §9.3): relation provenance; layering with cycle breaking, transitive reduction and long-edge handling; the `layers` format in the views and edits endpoints; the Dependencies tab with its summary strip.

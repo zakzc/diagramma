@@ -127,7 +127,7 @@ export default function SplitLayout({ left, right }: { left: PaneSpec; right: Pa
             <button
               aria-label={`Unfold ${spec.title}`}
               title={`Unfold ${spec.title}`}
-              className="rounded px-1.5 text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-700"
+              className="btn btn-ghost btn-sm"
               onClick={() => update({ fold: "split" })}
             >
               {side === "left" ? glyph.unfoldLeft : glyph.unfoldRight}
@@ -140,15 +140,15 @@ export default function SplitLayout({ left, right }: { left: PaneSpec; right: Pa
             </span>
           </div>
         ) : (
-          <header className="flex items-center gap-2 border-b border-slate-200 px-3 py-1.5 text-sm dark:border-slate-700">
-            <h3 className="font-medium">{spec.title}</h3>
+          <header className="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800/60">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{spec.title}</h3>
             <span className="flex-1" />
             {spec.actions}
             <button
               aria-label={`Fold ${spec.title}`}
               title={lastOpen ? "At least one pane must stay open" : `Fold ${spec.title}`}
               disabled={lastOpen}
-              className="rounded px-1.5 text-slate-600 hover:bg-slate-200 disabled:opacity-30 dark:text-slate-300 dark:hover:bg-slate-700"
+              className="btn btn-ghost btn-sm"
               onClick={() => update({ fold: onlyOther })}
             >
               {side === "left" ? glyph.foldLeft : glyph.foldRight}
