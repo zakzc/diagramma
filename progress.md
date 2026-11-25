@@ -133,6 +133,19 @@ Roadmap item 1, promoted after M10. **Built.**
 - [-] New test files: not added (standing rule). Existing 223 backend and 84 frontend tests still pass
 - [-] Layer number / upward edges per box, selection highlight: deferred (SPEC §9.5 open questions 1-2)
 
+## M12 — Imports beyond React (SPEC §9.6)
+**Specified, not built.** Waiting for answers to open questions 1-4.
+- [x] Spec: §9.6, milestone line, roadmap item 2 note
+- [ ] `files.py`: build the file model for every Python/TS/JS container, language-neutral kinds
+- [ ] Imports tab and error text without "React"; tool version 0.6.0
+
+## M13 — UI refresh (SPEC §9.7)
+**Specified, not built.** Waiting for answers to open questions 1-5.
+- [x] Spec: §9.7
+- [ ] Shared control classes (primary, secondary, ghost, segmented), focus/disabled states
+- [ ] RepoForm, depth stepper, tabs, diagram toolbar, history, warning strip
+- [ ] Verified in a real browser, both themes
+
 ## Cross-cutting
 - [x] Unified error shape `{ "error": { code, message } }`
 - [x] CORS limited to local frontend origin; bind `127.0.0.1`

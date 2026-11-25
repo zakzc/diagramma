@@ -1,7 +1,10 @@
 # Diagramma — Specification
 
-**Version:** 0.12
+**Version:** 0.13
 **Purpose:** A locally run web app. You paste a GitHub repo URL **or give the path of a folder on your machine**, the backend analyses the repo, and the frontend shows a C4-style **Component diagram** of the *entire application* as a Mermaid graph. Past diagrams are kept in a history list so you can reopen them.
+
+### Changes from v0.12
+- **Spec only, not built: Imports view for more than React (M12, §9.6) and a UI refresh (M13, §9.7).** The file graph already exists for every Python, TypeScript and JavaScript file; only the React filter hides it. Java, Kotlin, C and C++ have no parser yet and stay roadmap item 2. The UI refresh defines one small set of button/control styles and replaces the loose radios, tiny squares and grey chips. Open questions are numbered in each section.
 
 ### Changes from v0.11
 - **New: details panel (M11, §9.5).** Click a box in any tab (Flowchart, C4, Dependencies, Imports) to open a panel with what the model knows about it: kind and role, technology, paths, lines and files, evidence, what it contains, and **exactly what it uses and who uses it** (so a hub's hidden incoming edges are listed). Names in the lists are clickable. Backed by `GET /api/diagrams/{id}/nodes/{nodeId}?depth=` (§5.2). No model or schema change, so no tool version bump. Promotes roadmap item 1 into the build (the layer and upward-edge listing is left in the roadmap).
@@ -475,6 +478,49 @@ The flowchart (§9.2) is a **structural map**: groups, folders, who is next to w
 
 ---
 
+### 9.6 Imports beyond React — M12, specified (not built)
+
+**Today.** Only containers that use React get `files` / `file_imports` (`analysis/files.py`), and the tab says "React". The import graph itself (`graph.py`, tree-sitter) is already built for every Python, TypeScript and JavaScript file, so the same view can be drawn for them with **no new parsing**.
+
+**Proposal.** Build the file model for every file of a supported language (`SUPPORTED` in `scan.py`: Python, TypeScript, JavaScript), not only React containers, and draw it in the same Imports tab with the same legend, hub rule and grouping (a subgraph per top-level folder; per container when there are several). React containers keep the §9.4 kinds. Other files use language-neutral rules (first match wins):
+
+| Kind | Python rule | Plain JS/TS rule |
+|---|---|---|
+| Entry point | `if __name__ == "__main__"`, `__main__.py`, `manage.py`, `main.py`/`app.py` creating an app | `package.json` `main`/`bin`, `server.ts`/`index.ts` calling `listen(` |
+| API / service layer | route decorators (`@app.get`, `@router.`, `@app.route`), `urls.py`, `views.py`, or an `api/` / `routers/` folder; HTTP-client imports (`requests`, `httpx`, `aiohttp`) | existing §9.4 API rule; Express/Fastify route registration |
+| Database access | imports a catalogue database (`sqlite3`, `sqlalchemy`, `psycopg`, ...), or `db/`, `models/`, `repositories/` | existing §9.4 DB rule |
+| Types | `schemas.py`, `types.py`, `models.py` made of classes, `types/` folder | existing §9.4 Types rule |
+| Config | `settings.py`, `config.py`, `constants.py`, `config/` | existing §9.4 Config rule |
+| Util / lib | everything else | everything else |
+
+The tab is named **Imports** (no "React"); `IMPORTS_UNAVAILABLE` now means "no analysable files". Tool version 0.6.0 (the stored model gains files for non-React containers); older records answer `IMPORTS_UNAVAILABLE` as before and the user resubmits. No schema change (files live in the model JSON).
+
+**Not covered.** Java, Kotlin, C, C++, Go, C#, Rust, Ruby and PHP files are scanned but not parsed (the repo in the History list, FrostWire, is Java: its Imports tab would stay empty). Each needs an import extractor and a resolver (Java: `import a.b.C` to a file; C/C++: `#include`), so it belongs to roadmap item 2 and gets its own milestone.
+
+**Open questions** (numbered; defaults taken so it can be built as written)
+1. **Scope.** Python and plain JS/TS now, with Java/Kotlin/C/C++ left for roadmap item 2 (default); or include one more language in M12 (say which)?
+2. **Kinds.** Use the six language-neutral kinds above (default), or add Python-specific ones (e.g. "Package", "CLI command")?
+3. **Mixed repos.** Show React and non-React containers in one graph grouped per container (default), or one graph per container with a selector?
+4. **Test files.** They are already excluded by the scanner (§8). Keep excluded (default) or draw them in a separate "Tests" kind?
+
+### 9.7 UI refresh — M13, specified (not built)
+
+**What is wrong now** (from the running app): the source choice is two bare radio buttons; the "ref" field has no label; depth is six unlabelled squares; Flowchart/C4/Dependencies/Imports, +/-/Fit and Copy are the same low-contrast grey chips, so nothing says which is a tab, a tool or an action; Generate is the only button that looks like one; Reset/Save are greyed with no explanation; history delete is a bare "✕"; the amber warning banner is permanent and heavy; the diagram is a white sheet with no frame against the dark chrome.
+
+**Proposal.** No behaviour change, only styling and layout, Tailwind only, no new dependency. A few shared classes in `index.css` (`@layer components`) so every control comes from the same set:
+- **Primary button** (filled accent: Generate, Select this folder, Save), **secondary** (outlined: Browse…, Copy .mmd, Reset), **icon/ghost** (✕, collapse, +/-) with a tooltip and an accessible name, and a **segmented control** (one rounded group, one selected segment) used for the source choice (GitHub URL | Local folder), the depth stepper (`Depth  −  3  +`, with the maximum shown) and the diagram tabs.
+- Visible focus ring, hover and pressed states, a clear disabled look with a `title` saying why (e.g. Save: "No changes to save"), minimum 32px hit targets, consistent 8px spacing.
+- The diagram gets a framed canvas with a toolbar above it in two groups (view tools | actions); the history list gets a labelled delete icon and a confirm-free undo-less delete as now.
+- The warning banner becomes a compact, dismissible strip.
+- Light and dark both stay (follows the system as now); existing roles, aria-labels and test ids are kept so current tests keep passing.
+
+**Open questions** (numbered; defaults taken so it can be built as written)
+1. **Look.** Keep following the system light/dark setting with a sharper, flatter style (default), or force one theme?
+2. **Accent colour.** Blue as the Generate button is now (default), or another?
+3. **Code pane.** Open beside the diagram as now (default), or collapsed with a "Code" toggle so the diagram uses the full width?
+4. **Icons.** Text buttons plus a few inline SVG icons, no icon library (default), or text only?
+5. **Warning banner.** Dismissible strip (default), or keep always visible?
+
 ## 10. Project layout
 
 ```
@@ -527,6 +573,7 @@ diagramma/
 - **M6 Editor split view:** (can be built right after M1, since it only needs text) resizable 1/3 : 2/3 split, fold states, live preview with error bar, save/reset of edits.
 - **M7 Deeper components and a clearer view** (built): components as a tree with a Depth control, depth roll-up of relations, grouped edges and hubs in the flowchart, per-view edits, schema v2.
 - **M9 Imports view** (built, §9.4): React file model (`files`, `file_imports`) and file-kind classifier; the `imports` format; the Imports tab with a colour legend.
+- **M12 Imports beyond React** (specified, §9.6) and **M13 UI refresh** (specified, §9.7): not built.
 - **M11 Details panel** (built, §9.5): click a box to see its details, uses and used-by; `GET /api/diagrams/{id}/nodes/{nodeId}`.
 - **M10 Local folder input** (built, §5.6): `path` in `POST /api/diagrams`, open-local-folder fetch step, content fingerprint as identity, `.gitignore`, `source` field (schema v4, tool 0.5.0), folder browser endpoint and UI, form mode switch, `INVALID_PATH` / `PATH_NOT_FOUND`.
 - **M8 Dependency graph view** (built in a simpler form, §9.3): relation provenance; layering with cycle breaking, transitive reduction and long-edge handling; the `layers` format in the views and edits endpoints; the Dependencies tab with its summary strip.
@@ -574,7 +621,7 @@ diagramma/
 Roughly in the order I'd suggest:
 
 1. ~~Details panel~~ built as M11 (§9.5). Left here: layer and upward-edge listing for the Dependency graph, highlighting the selected box.
-2. **More languages:** Go, Java, C#, Ruby, Rust, PHP.
+2. **More languages:** (Python and JS/TS Imports: M12, §9.6.) Go, Java, C#, Ruby, Rust, PHP.
 3. **Smarter components:** import-graph community detection (Louvain) when folder conventions give nothing; framework markers (`@Controller`, Spring, Django apps, Rails).
 4. **Smarter readability:** weak-edge pruning, container-level fallback for huge repos; for the Dependency graph: a toggle to draw upward edges, strict layer alignment, and per-container filtering. (Hub nodes drawn once are done for the flowchart, §9.2.)
    **Dependency graph extras:** layer bands with explicit "Layer N" titles, hub marking, and per-container filtering.
