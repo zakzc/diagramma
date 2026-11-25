@@ -46,7 +46,16 @@ From the repo root, after step 1:
                     # http://127.0.0.1:8787
 ```
 
-Use `./run.sh serve` for everyday use and `./run.sh` when changing code. On Windows, or to start the pieces by hand:
+Use `serve` for everyday use and the plain command when changing code.
+
+**Windows:** do not double-click or type `./run.sh` in cmd or PowerShell: Windows does not know what program runs a `.sh` file and asks you to pick one. Use `run.cmd` instead (same two modes):
+
+```bat
+run.cmd             :: dev: backend and Vite, each in its own window; close both to stop
+run.cmd serve       :: build the frontend, then UI + API on http://127.0.0.1:8787
+```
+
+(Git Bash or WSL also run `./run.sh` as is.) To start the pieces by hand on any system:
 
 ```bash
 # terminal 1 (API, plus the built frontend if frontend/dist exists)
